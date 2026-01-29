@@ -14,7 +14,7 @@ import {
 } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { tools } from "./tools";
-import { env } from "cloudflare:workers";
+import { env, WorkerEntrypoint } from "cloudflare:workers";
 
 // export this WorkerEntryPoint that lets you
 // reroute function calls back to a caller
@@ -33,13 +33,15 @@ declare global {
   }
 }
 
-const model = openai("gpt-5");
+// OpenAI
+const model = openai("gpt-4o");
 
-export const globalOutbound = {
-  fetch: async (
+// Global outbound handler as a WorkerEntrypoint for Vite plugin compatibility
+export class globalOutbound extends WorkerEntrypoint {
+  async fetch(
     input: string | URL | RequestInfo,
     init?: RequestInit<CfProperties<unknown>> | undefined
-  ): Promise<Response> => {
+  ): Promise<Response> {
     const url = new URL(
       typeof input === "string"
         ? input
@@ -52,11 +54,25 @@ export const globalOutbound = {
     }
     return fetch(input, init);
   }
+}
+
+type TokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+type RequestMetrics = {
+  usage?: TokenUsage;
+  codemodeUsage?: TokenUsage;
+  durationMs?: number;
+  timestamp?: string;
 };
 
 type State = {
   messages: UIMessage<typeof tools>[];
   loading: boolean;
+  metrics?: RequestMetrics;
 };
 
 export class Codemode extends Agent<Env, State> {
@@ -71,7 +87,8 @@ export class Codemode extends Agent<Env, State> {
 
   initialState: State = {
     messages: [],
-    loading: false
+    loading: false,
+    metrics: undefined
   };
 
   async onStart() {
@@ -123,7 +140,12 @@ export class Codemode extends Agent<Env, State> {
 
   async onChatMessage() {
     // Collect all tools, including MCP tools
-    this.setState({ messages: this.state.messages, loading: true });
+    const startTime = Date.now();
+    this.setState({
+      messages: this.state.messages,
+      loading: true,
+      metrics: undefined
+    });
     const allTools = {
       ...tools,
       ...this.mcp.getAITools()
@@ -131,7 +153,7 @@ export class Codemode extends Agent<Env, State> {
 
     this.tools = allTools;
 
-    const { prompt, tools: wrappedTools } = await codemode({
+    const { prompt: codemodePrompt, tools: wrappedTools } = await codemode({
       prompt: `You are a helpful assistant that can do various tasks... 
 
 ${getSchedulePrompt({ date: new Date() })}
@@ -151,7 +173,7 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
     });
 
     const result = streamText({
-      system: prompt,
+      system: codemodePrompt,
 
       messages: await convertToModelMessages(this.state.messages),
       model,
@@ -182,9 +204,49 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
         loading: this.state.loading
       });
     }
+
+    // Capture metrics after completion
+    const durationMs = Date.now() - startTime;
+    const usage = await result.usage;
+
+    // Extract codemodeUsage from tool results
+    let codemodeUsage: TokenUsage | undefined;
+    for (const msg of this.state.messages) {
+      if (msg.role === "assistant" && msg.parts) {
+        for (const part of msg.parts) {
+          const toolPart = part as any;
+          if (
+            toolPart.type?.startsWith("tool-") &&
+            toolPart.output?.codemodeUsage
+          ) {
+            codemodeUsage = toolPart.output.codemodeUsage;
+          } else if (
+            part.type === "tool-invocation" &&
+            toolPart.toolInvocation?.result?.codemodeUsage
+          ) {
+            codemodeUsage = toolPart.toolInvocation.result.codemodeUsage;
+          }
+        }
+      }
+    }
+
+    const metrics: RequestMetrics = {
+      usage: usage
+        ? {
+            inputTokens: usage.inputTokens ?? usage.promptTokens ?? 0,
+            outputTokens: usage.outputTokens ?? usage.completionTokens ?? 0,
+            totalTokens: usage.totalTokens ?? 0
+          }
+        : undefined,
+      codemodeUsage,
+      durationMs,
+      timestamp: new Date().toISOString()
+    };
+
     this.setState({
       messages: this.state.messages,
-      loading: false
+      loading: false,
+      metrics
     });
   }
 }

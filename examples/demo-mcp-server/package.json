@@ -1,0 +1,12 @@
+{
+  "name": "demo-mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "npx mcp-proxy --port 8080 -- npx tsx server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.0",
+    "tsx": "^4.0.0"
+  }
+}

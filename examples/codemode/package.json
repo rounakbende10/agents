@@ -8,5 +8,10 @@
     "start": "vite dev",
     "types": "wrangler types env.d.ts --include-runtime false",
     "deploy": "vite build && wrangler deploy"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^3.0.16",
+    "@cloudflare/codemode": "^0.0.5",
+    "agents": "^0.3.6"
   }
 }

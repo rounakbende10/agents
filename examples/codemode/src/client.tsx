@@ -6,6 +6,25 @@ import { useState, useEffect, useRef } from "react";
 import type { Codemode } from "./server";
 import type { MCPServersState } from "agents";
 
+type TokenUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+};
+
+type RequestMetrics = {
+  usage?: TokenUsage;
+  codemodeUsage?: TokenUsage;
+  durationMs?: number;
+  timestamp?: string;
+};
+
+type AgentState = {
+  messages: UIMessage[];
+  loading: boolean;
+  metrics?: RequestMetrics;
+};
+
 // Component to render different types of message parts
 function MessagePart({ part }: { part: UIMessage["parts"][0] }) {
   if (part.type === "text") {
@@ -179,19 +198,19 @@ function App() {
   const [newServerName, setNewServerName] = useState("");
   const [newServerUrl, setNewServerUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [metrics, setMetrics] = useState<RequestMetrics | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const agent = useAgent<Codemode, { messages: UIMessage[]; loading: boolean }>(
-    {
-      agent: "codemode",
-      onStateUpdate: (state) => {
-        setMessages(state.messages);
-        setLoading(state.loading);
-      },
-      onMcpUpdate: (mcpServers) => {
-        setMcpServers(mcpServers);
-      }
+  const agent = useAgent<Codemode, AgentState>({
+    agent: "codemode",
+    onStateUpdate: (state) => {
+      setMessages(state.messages);
+      setLoading(state.loading);
+      setMetrics(state.metrics);
+    },
+    onMcpUpdate: (mcpServers) => {
+      setMcpServers(mcpServers);
     }
-  );
+  });
 
   const addMCPServer = () => {
     if (!newServerName.trim() || !newServerUrl.trim()) return;
@@ -360,6 +379,50 @@ function App() {
               Reset Chat
             </button>
           </div>
+
+          {/* Metrics Display */}
+          {metrics && (
+            <div className="metrics-bar">
+              {metrics.usage && (
+                <div className="metric-item">
+                  <span className="metric-label">Main LLM (GPT-4o):</span>
+                  <span className="metric-value">
+                    {metrics.usage.inputTokens} in /{" "}
+                    {metrics.usage.outputTokens} out (
+                    {metrics.usage.totalTokens} total)
+                  </span>
+                </div>
+              )}
+              {metrics.codemodeUsage && (
+                <div className="metric-item">
+                  <span className="metric-label">Codemode (GPT-4.1):</span>
+                  <span className="metric-value">
+                    {metrics.codemodeUsage.inputTokens} in /{" "}
+                    {metrics.codemodeUsage.outputTokens} out (
+                    {metrics.codemodeUsage.totalTokens} total)
+                  </span>
+                </div>
+              )}
+              {(metrics.usage || metrics.codemodeUsage) && (
+                <div className="metric-item metric-total">
+                  <span className="metric-label">Total:</span>
+                  <span className="metric-value">
+                    {(metrics.usage?.totalTokens || 0) +
+                      (metrics.codemodeUsage?.totalTokens || 0)}{" "}
+                    tokens
+                  </span>
+                </div>
+              )}
+              {metrics.durationMs && (
+                <div className="metric-item">
+                  <span className="metric-label">Duration:</span>
+                  <span className="metric-value">
+                    {(metrics.durationMs / 1000).toFixed(2)}s
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="chat-container">
             <div className="messages">

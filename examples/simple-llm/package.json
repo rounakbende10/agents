@@ -1,0 +1,19 @@
+{
+  "name": "@cloudflare/agents-simple-llm-example",
+  "author": "Comparison Example",
+  "type": "module",
+  "keywords": [],
+  "private": true,
+  "scripts": {
+    "start": "vite dev",
+    "types": "wrangler types env.d.ts --include-runtime false",
+    "deploy": "vite build && wrangler deploy"
+  },
+  "dependencies": {
+    "agents": "^0.3.3"
+  },
+  "devDependencies": {
+    "@babel/plugin-proposal-decorators": "^7.28.6",
+    "@babel/plugin-transform-class-properties": "^7.28.6"
+  }
+}

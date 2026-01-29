@@ -5,7 +5,8 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), cloudflare()],
   define: {
-    __filename: "'index.ts'"
+    __filename: "'index.ts'",
+    __dirname: "'/'"
   },
   build: {
     minify: true

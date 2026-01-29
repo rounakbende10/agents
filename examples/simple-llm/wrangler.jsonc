@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "simple-llm-demo",
+  "main": "src/server.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat", "experimental"],
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "Simplechat",
+        "class_name": "Simplechat"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Simplechat"]
+    }
+  ]
+}
