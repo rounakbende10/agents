@@ -52,13 +52,17 @@ examples/codemode/
 
 ### Model Configuration
 
-The code generation model is configured in the `@cloudflare/codemode` package. To change it, modify the Vite bundle:
+The code generation model is configured in the `@cloudflare/codemode` package. To change it:
 
-```
-node_modules/.vite/deps_codemode_demo/@cloudflare_codemode_ai.js
-```
+1. Start the dev server: `npm start`
+2. Find the Vite bundle (generated at runtime):
+   ```
+   examples/codemode/node_modules/.vite/deps_codemode_demo/
+   ```
+3. Search for codemode-related chunks and find `openai("gpt-`
+4. Update the model name
 
-Search for `openai("gpt-` and update the model name.
+**Note:** The bundle is regenerated when Vite re-optimizes dependencies.
 
 ## Known Issues & Fixes
 
