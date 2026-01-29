@@ -2,7 +2,13 @@
 
 LLM-powered code generation and execution in Cloudflare Workers V8 isolates.
 
-<img width="1481" height="810" alt="image" src="https://github.com/user-attachments/assets/36656642-1b0f-46d9-868b-f13c6e127b5e" />
+## Performance Comparison
+
+| Codemode                            | Traditional                              |
+| ----------------------------------- | ---------------------------------------- |
+| ![Codemode](./assets/code-mode.png) | ![Traditional](./assets/traditional.png) |
+
+Codemode executes multiple tools in parallel with a single code generation, while traditional tool calling requires sequential LLM round-trips.
 
 ## Quick Start
 
