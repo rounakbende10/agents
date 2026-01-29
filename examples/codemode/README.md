@@ -23,11 +23,65 @@ npm start
 
 Open http://localhost:5173 (or 5174/5175 if ports are in use).
 
-## Adding MCP Servers
+## MCP Server Setup
 
-1. Click "Add MCP Server" in the UI
-2. Enter name (e.g., `google-calendar`) and URL (e.g., `https://mcp.example.com/sse`)
-3. Tools from the MCP server become available to the LLM
+### Google Calendar MCP
+
+We use [nspady/google-calendar-mcp](https://github.com/nspady/google-calendar-mcp).
+
+**1. Create Google Cloud Project**
+
+- Go to [Google Cloud Console](https://console.cloud.google.com/)
+- Enable **Google Calendar API**
+
+**2. Create OAuth Credentials**
+
+- "APIs & Services" → "Credentials" → "OAuth client ID"
+- Select "Desktop app", download as `credentials.json`
+
+**3. Generate Token File**
+
+```bash
+npx @anthropic/mcp-server-google-calendar auth
+```
+
+Tokens saved to `token.json`.
+
+**4. Start MCP Server**
+
+```bash
+npx @anthropic/mcp-server-google-calendar --transport sse --port 3001
+```
+
+**5. Connect from UI**
+
+- Click "Add MCP Server"
+- Name: `google-calendar`
+- URL: `http://localhost:3001/sse`
+
+### Serper MCP (Web Search)
+
+```bash
+SERPER_API_KEY=your-key npx @anthropic/mcp-server-serper --transport sse --port 3002
+```
+
+### Token Refresh
+
+Tokens expire after 7 days in "Testing" mode. Re-run auth:
+
+```bash
+npx @anthropic/mcp-server-google-calendar auth
+```
+
+### Security Notes
+
+Add to `.gitignore`:
+
+```
+credentials.json
+token.json
+*-token.json
+```
 
 ## Project Structure
 

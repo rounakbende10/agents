@@ -13,10 +13,9 @@
 3. [How the Sandbox Works](#how-the-sandbox-works)
 4. [Tool Discovery & TypeScript Generation](#tool-discovery--typescript-generation)
 5. [Why TypeScript API Over JSON Schema](#why-typescript-api-over-json-schema)
-6. [MCP Server Setup](#mcp-server-setup)
-7. [Issues & Fixes](#issues--fixes)
-8. [Configuration](#configuration)
-9. [Contribution](#contribution)
+6. [Issues & Fixes](#issues--fixes)
+7. [Configuration](#configuration)
+8. [Contribution](#contribution)
 
 ---
 
@@ -364,66 +363,6 @@ const searches = await Promise.all(
   events.flat().map((e) => codemode["web-search"]({ query: e.summary }))
 );
 return { calendars, events, searches };
-```
-
----
-
-## MCP Server Setup
-
-### Google Calendar MCP
-
-We use [nspady/google-calendar-mcp](https://github.com/nspady/google-calendar-mcp).
-
-#### Setup Steps
-
-1. **Create Google Cloud Project**
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Enable **Google Calendar API**
-
-2. **Create OAuth Credentials**
-   - "APIs & Services" → "Credentials" → "OAuth client ID"
-   - Select "Desktop app", download as `credentials.json`
-
-3. **Generate Token File**
-
-   ```bash
-   npx @anthropic/mcp-server-google-calendar auth
-   ```
-
-   Tokens saved to `token.json`.
-
-4. **Start MCP Server**
-
-   ```bash
-   npx @anthropic/mcp-server-google-calendar --transport sse --port 3001
-   ```
-
-5. **Connect from UI**
-   - Name: `google-calendar`
-   - URL: `http://localhost:3001/sse`
-
-### Serper MCP (Web Search)
-
-```bash
-SERPER_API_KEY=your-key npx @anthropic/mcp-server-serper --transport sse --port 3002
-```
-
-### Token Refresh
-
-Tokens expire after 7 days in "Testing" mode. Re-run auth:
-
-```bash
-npx @anthropic/mcp-server-google-calendar auth
-```
-
-### Security Notes
-
-Add to `.gitignore`:
-
-```
-credentials.json
-token.json
-*-token.json
 ```
 
 ---
