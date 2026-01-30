@@ -68,7 +68,14 @@ export async function experimental_codemode(options: {
     }),
     outputSchema: z.object({
       code: z.string(),
-      result: z.any()
+      result: z.any(),
+      codemodeUsage: z
+        .object({
+          inputTokens: z.number(),
+          outputTokens: z.number(),
+          totalTokens: z.number()
+        })
+        .optional()
     }),
     execute: async ({ functionDescription }) => {
       try {
@@ -98,7 +105,15 @@ export async function experimental_codemode(options: {
           loader: options.loader
         });
         const result = await evaluator();
-        return { code: response.object.code, result: result };
+        return {
+          code: response.object.code,
+          result: result,
+          codemodeUsage: {
+            inputTokens: response.usage?.inputTokens ?? 0,
+            outputTokens: response.usage?.outputTokens ?? 0,
+            totalTokens: response.usage?.totalTokens ?? 0
+          }
+        };
       } catch (error) {
         console.error("error", error);
         throw error;

@@ -395,7 +395,9 @@ function App() {
               )}
               {metrics.codemodeUsage && (
                 <div className="metric-item">
-                  <span className="metric-label">Codemode (GPT-4.1):</span>
+                  <span className="metric-label">
+                    Codemode (GPT-5.1-codex-mini):
+                  </span>
                   <span className="metric-value">
                     {metrics.codemodeUsage.inputTokens} in /{" "}
                     {metrics.codemodeUsage.outputTokens} out (
