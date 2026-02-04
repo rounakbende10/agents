@@ -31,62 +31,53 @@ Open http://localhost:5173 (or 5174/5175 if ports are in use).
 
 ## MCP Server Setup
 
-### Google Calendar MCP
+### Google Calendar
 
-We use [nspady/google-calendar-mcp](https://github.com/nspady/google-calendar-mcp).
+**Setup:**
 
-**1. Create Google Cloud Project**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → Enable **Google Calendar API**
+2. Create OAuth credentials: "APIs & Services" → "Credentials" → "OAuth client ID" → "Desktop app"
+3. Download as `credentials.json`
+4. Run auth: `npx @anthropic/mcp-server-google-calendar auth` (saves `token.json`)
 
-- Go to [Google Cloud Console](https://console.cloud.google.com/)
-- Enable **Google Calendar API**
-
-**2. Create OAuth Credentials**
-
-- "APIs & Services" → "Credentials" → "OAuth client ID"
-- Select "Desktop app", download as `credentials.json`
-
-**3. Generate Token File**
-
-```bash
-npx @anthropic/mcp-server-google-calendar auth
-```
-
-Tokens saved to `token.json`.
-
-**4. Start MCP Server**
+**Start server:**
 
 ```bash
 npx @anthropic/mcp-server-google-calendar --transport sse --port 3001
 ```
 
-**5. Connect from UI**
+**Connect:** Name `google-calendar`, URL `http://localhost:3001/sse`
 
-- Click "Add MCP Server"
-- Name: `google-calendar`
-- URL: `http://localhost:3001/sse`
+> Tokens expire after 7 days in "Testing" mode. Re-run auth command to refresh.
 
-### Serper MCP (Web Search)
+### Serper (Web Search)
+
+Get API key from [serper.dev](https://serper.dev)
 
 ```bash
 SERPER_API_KEY=your-key npx @anthropic/mcp-server-serper --transport sse --port 3002
 ```
 
-### Token Refresh
+**Connect:** Name `serper`, URL `http://localhost:3002/sse`
 
-Tokens expire after 7 days in "Testing" mode. Re-run auth:
+### GitHub
+
+Create token at [GitHub Settings → Personal Access Tokens](https://github.com/settings/tokens) with `repo` scope.
 
 ```bash
-npx @anthropic/mcp-server-google-calendar auth
+GITHUB_PERSONAL_ACCESS_TOKEN=your-token npx @modelcontextprotocol/server-github --transport sse --port 3003
 ```
 
-### Security Notes
+**Connect:** Name `github`, URL `http://localhost:3003/sse`
+
+### Security
 
 Add to `.gitignore`:
 
 ```
 credentials.json
 token.json
-*-token.json
+.env
 ```
 
 ## Project Structure
