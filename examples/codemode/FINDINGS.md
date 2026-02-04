@@ -920,15 +920,15 @@ A key architectural advantage of Codemode is precise parameter control:
 ### PR #807: Fix MCP Tool Name Handling
 
 **Repository:** [cloudflare/agents](https://github.com/cloudflare/agents)
-**Status:** On hold (API being reworked by maintainers)
-**CI:** Core tests passed; `sync-docs`/`claude-review` failed due to fork PR permission restrictions.
+**Status:** Closed (not merged) - API being reworked by maintainers
 
-**Changes:**
+**Changes proposed:**
 
 - Quoted property names in TypeScript declarations
 - Bracket notation instruction in prompt
 - Direct function name pass-through
-- Model update to `gpt-5.1-codex-mini`
+
+The fixes are applied locally in this fork for testing purposes.
 
 ---
 
