@@ -17,9 +17,14 @@ type TokenUsage = {
 };
 
 type RequestMetrics = {
+  // Current request metrics
   usage?: TokenUsage;
   durationMs?: number;
   timestamp?: string;
+  // Cumulative session metrics
+  requestCount?: number;
+  cumulativeUsage?: TokenUsage;
+  cumulativeDurationMs?: number;
 };
 
 type State = {
@@ -79,17 +84,61 @@ export class Simplechat extends Agent<Env, State> {
 
   async onChatMessage() {
     const startTime = Date.now();
+
+    // Capture metrics at start (before any async operations)
+    const savedMetrics = this.state.metrics;
+    console.log(
+      "\n[DEBUG] onChatMessage start - savedMetrics:",
+      JSON.stringify(savedMetrics)
+    );
+
+    // Preserve existing metrics for cumulative tracking
     this.setState({
       messages: this.state.messages,
       loading: true,
-      metrics: undefined
+      metrics: savedMetrics
     });
 
     // Collect all tools from MCP servers
-    const allTools = {
-      ...this.mcp.getAITools()
-    };
-    this.tools = allTools;
+    const mcpTools = this.mcp.getAITools();
+
+    // Wrap tools with tracing
+    const tracedTools: ToolSet = {};
+    for (const [toolName, tool] of Object.entries(mcpTools)) {
+      tracedTools[toolName] = {
+        ...tool,
+        execute: async (args: unknown, context: unknown) => {
+          console.log(
+            "\n┌─────────────────────────────────────────────────────────"
+          );
+          console.log("│ [TOOL CALL]", toolName);
+          console.log(
+            "├─────────────────────────────────────────────────────────"
+          );
+          console.log("│ Input:", JSON.stringify(args, null, 2));
+          console.log(
+            "└─────────────────────────────────────────────────────────"
+          );
+
+          const result = await tool.execute!(args, context);
+
+          console.log(
+            "\n┌─────────────────────────────────────────────────────────"
+          );
+          console.log("│ [TOOL RESULT]", toolName);
+          console.log(
+            "├─────────────────────────────────────────────────────────"
+          );
+          console.log("│ Output:", JSON.stringify(result, null, 2));
+          console.log(
+            "└─────────────────────────────────────────────────────────"
+          );
+
+          return result;
+        }
+      };
+    }
+    this.tools = tracedTools;
 
     // Create OpenAI client with API key from env
     const openai = createOpenAI({
@@ -97,13 +146,24 @@ export class Simplechat extends Agent<Env, State> {
     });
     const model = openai("gpt-5-mini");
 
+    const userMessage = this.state.messages[this.state.messages.length - 1];
+    console.log("\n╔═════════════════════════════════════════════════════════");
+    console.log("║ [LLM] GPT-5-mini");
+    console.log("╠═════════════════════════════════════════════════════════");
+    console.log("║ User Input:", userMessage?.content);
+    console.log(
+      "║ Available Tools:",
+      Object.keys(tracedTools).join(", ") || "(none)"
+    );
+    console.log("╚═════════════════════════════════════════════════════════");
+
     // LLM call with MCP tools
     const result = streamText({
       system:
         "You are a helpful assistant. Answer questions directly and concisely. Use the available tools when appropriate to help answer questions.",
       messages: await convertToModelMessages(this.state.messages),
       model,
-      tools: allTools,
+      tools: tracedTools,
       onError: (error) => {
         console.error("error", error);
       },
@@ -128,17 +188,73 @@ export class Simplechat extends Agent<Env, State> {
     const durationMs = Date.now() - startTime;
     const usage = await result.usage;
 
-    const metrics: RequestMetrics = {
-      usage: usage
-        ? {
-            inputTokens: usage.inputTokens ?? usage.promptTokens ?? 0,
-            outputTokens: usage.outputTokens ?? usage.completionTokens ?? 0,
-            totalTokens: usage.totalTokens ?? 0
-          }
-        : undefined,
-      durationMs,
-      timestamp: new Date().toISOString()
+    const currentUsage: TokenUsage = usage
+      ? {
+          inputTokens: usage.inputTokens ?? usage.promptTokens ?? 0,
+          outputTokens: usage.outputTokens ?? usage.completionTokens ?? 0,
+          totalTokens: usage.totalTokens ?? 0
+        }
+      : { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+
+    // Get previous cumulative metrics (use savedMetrics captured at start)
+    const prevCumulative = savedMetrics?.cumulativeUsage ?? {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0
     };
+    const prevRequestCount = savedMetrics?.requestCount ?? 0;
+    const prevCumulativeDuration = savedMetrics?.cumulativeDurationMs ?? 0;
+    console.log(
+      "[DEBUG] Using prevRequestCount:",
+      prevRequestCount,
+      "prevCumulative:",
+      JSON.stringify(prevCumulative)
+    );
+
+    // Calculate new cumulative totals
+    const cumulativeUsage: TokenUsage = {
+      inputTokens: prevCumulative.inputTokens + currentUsage.inputTokens,
+      outputTokens: prevCumulative.outputTokens + currentUsage.outputTokens,
+      totalTokens: prevCumulative.totalTokens + currentUsage.totalTokens
+    };
+
+    const metrics: RequestMetrics = {
+      usage: currentUsage,
+      durationMs,
+      timestamp: new Date().toISOString(),
+      requestCount: prevRequestCount + 1,
+      cumulativeUsage,
+      cumulativeDurationMs: prevCumulativeDuration + durationMs
+    };
+
+    console.log("\n╔═════════════════════════════════════════════════════════");
+    console.log("║ [LLM] Response Complete");
+    console.log("╠═════════════════════════════════════════════════════════");
+    console.log("║ Request #" + metrics.requestCount);
+    console.log(
+      "║ This Request: in=" +
+        currentUsage.inputTokens +
+        " out=" +
+        currentUsage.outputTokens +
+        " total=" +
+        currentUsage.totalTokens
+    );
+    console.log(
+      "║ Cumulative: in=" +
+        cumulativeUsage.inputTokens +
+        " out=" +
+        cumulativeUsage.outputTokens +
+        " total=" +
+        cumulativeUsage.totalTokens
+    );
+    console.log(
+      "║ Duration: " +
+        durationMs +
+        "ms (total: " +
+        metrics.cumulativeDurationMs +
+        "ms)"
+    );
+    console.log("╚═════════════════════════════════════════════════════════");
 
     this.setState({
       messages: this.state.messages,

@@ -130,6 +130,16 @@ body {
   font-family: "Monaco", "Menlo", monospace;
 }
 
+.metric-secondary {
+  opacity: 0.7;
+  border-left: 1px solid #404040;
+  padding-left: 1rem;
+}
+
+.metric-secondary .metric-value {
+  color: #a0a0a0;
+}
+
 .chat-container {
   flex: 1;
   display: flex;

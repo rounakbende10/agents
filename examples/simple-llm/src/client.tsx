@@ -13,9 +13,14 @@ type TokenUsage = {
 };
 
 type RequestMetrics = {
+  // Current request metrics
   usage?: TokenUsage;
   durationMs?: number;
   timestamp?: string;
+  // Cumulative session metrics
+  requestCount?: number;
+  cumulativeUsage?: TokenUsage;
+  cumulativeDurationMs?: number;
 };
 
 type AgentState = {
@@ -69,7 +74,7 @@ function App() {
       parts: [{ type: "text", text: inputMessage }]
     };
 
-    agent.setState({ messages: [...messages, userMessage], loading });
+    agent.setState({ messages: [...messages, userMessage], loading, metrics });
     setInputMessage("");
   };
 
@@ -86,7 +91,7 @@ function App() {
     <div className="app">
       <header className="header">
         <h1>Simple LLM with MCP Tools</h1>
-        <p>Direct GPT-4o calls with MCP tool support</p>
+        <p>Direct GPT-5-mini calls with MCP tool support</p>
       </header>
 
       <div className="main-content">
@@ -172,24 +177,41 @@ function App() {
 
           {metrics && (
             <div className="metrics-bar">
-              {metrics.usage && (
+              {metrics.requestCount && (
                 <div className="metric-item">
-                  <span className="metric-label">Tokens:</span>
+                  <span className="metric-label">Requests:</span>
+                  <span className="metric-value">{metrics.requestCount}</span>
+                </div>
+              )}
+              {metrics.cumulativeUsage && (
+                <div className="metric-item">
+                  <span className="metric-label">Total Tokens:</span>
                   <span className="metric-value">
-                    {metrics.usage.inputTokens} in /{" "}
-                    {metrics.usage.outputTokens} out (
-                    {metrics.usage.totalTokens} total)
+                    {metrics.cumulativeUsage.inputTokens} in /{" "}
+                    {metrics.cumulativeUsage.outputTokens} out (
+                    {metrics.cumulativeUsage.totalTokens} total)
                   </span>
                 </div>
               )}
-              {metrics.durationMs && (
+              {metrics.cumulativeDurationMs && (
                 <div className="metric-item">
-                  <span className="metric-label">Duration:</span>
+                  <span className="metric-label">Total Duration:</span>
                   <span className="metric-value">
-                    {(metrics.durationMs / 1000).toFixed(2)}s
+                    {(metrics.cumulativeDurationMs / 1000).toFixed(2)}s
                   </span>
                 </div>
               )}
+              {metrics.usage &&
+                metrics.requestCount &&
+                metrics.requestCount > 1 && (
+                  <div className="metric-item metric-secondary">
+                    <span className="metric-label">Last Request:</span>
+                    <span className="metric-value">
+                      {metrics.usage.totalTokens} tokens,{" "}
+                      {(metrics.durationMs! / 1000).toFixed(2)}s
+                    </span>
+                  </div>
+                )}
             </div>
           )}
 

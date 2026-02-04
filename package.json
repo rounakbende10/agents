@@ -88,5 +88,9 @@
       "prettier --write --ignore-unknown"
     ]
   },
-  "packageManager": "npm@11.7.0"
+  "packageManager": "npm@11.7.0",
+  "dependencies": {
+    "@ai-sdk/google-vertex": "^4.0.33",
+    "@ai-sdk/groq": "^3.0.16"
+  }
 }

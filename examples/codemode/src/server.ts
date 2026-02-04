@@ -172,6 +172,14 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       })
     });
 
+    const userMessage = this.state.messages[this.state.messages.length - 1];
+    console.log("\n╔═════════════════════════════════════════════════════════");
+    console.log("║ [MAIN LLM] GPT-4o");
+    console.log("╠═════════════════════════════════════════════════════════");
+    console.log("║ User Input:", userMessage?.content);
+    console.log("║ Available Tools:", Object.keys(wrappedTools).join(", "));
+    console.log("╚═════════════════════════════════════════════════════════");
+
     const result = streamText({
       system: codemodePrompt,
 
@@ -242,6 +250,30 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       durationMs,
       timestamp: new Date().toISOString()
     };
+
+    console.log("\n╔═════════════════════════════════════════════════════════");
+    console.log("║ [MAIN LLM] Response Complete");
+    console.log("╠═════════════════════════════════════════════════════════");
+    console.log(
+      "║ Main LLM Tokens: in=" +
+        (metrics.usage?.inputTokens ?? 0) +
+        " out=" +
+        (metrics.usage?.outputTokens ?? 0) +
+        " total=" +
+        (metrics.usage?.totalTokens ?? 0)
+    );
+    if (metrics.codemodeUsage) {
+      console.log(
+        "║ Codemode Tokens: in=" +
+          metrics.codemodeUsage.inputTokens +
+          " out=" +
+          metrics.codemodeUsage.outputTokens +
+          " total=" +
+          metrics.codemodeUsage.totalTokens
+      );
+    }
+    console.log("║ Duration:", durationMs + "ms");
+    console.log("╚═════════════════════════════════════════════════════════");
 
     this.setState({
       messages: this.state.messages,
