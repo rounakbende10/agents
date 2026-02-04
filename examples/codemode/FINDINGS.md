@@ -77,7 +77,7 @@ User Message
     ▼
 ┌─────────────────┐
 │  Main LLM       │  Token Usage #1 - decides to use codemode
-│  (GPT-4o)       │
+│  (GPT-5-mini)   │
 └────────┬────────┘
          │
          ▼
@@ -611,7 +611,7 @@ Examples: `tool_LsJQQ4r_google_search`, `tool_Rgo1O6n7_list-calendars`
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 1: MAIN LLM (GPT-4o)                                               │
+│ STEP 1: MAIN LLM (GPT-5-mini)                                           │
 │ Receives user query, decides to use codemode tool                       │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -718,102 +718,46 @@ Examples: `tool_LsJQQ4r_google_search`, `tool_Rgo1O6n7_list-calendars`
 - Google Calendar
 - GitHub
 
-**Log File:** `logs/codemode-multi-tool-test-20260204-161955.log`
+**Log File:** `logs/codemode-multi-tool-test.log`
 
-**Execution Flow:**
+**Execution Flow (Sequential):**
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 1: MAIN LLM (GPT-4o)                                               │
-│ Receives complex multi-tool query, delegates to codemode                │
-│ Splits into multiple sub-tasks for different MCP servers                │
+│ MAIN LLM (GPT-5-mini) - Orchestrates 7 sequential codemode calls        │
 └─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 2: CODEMODE LLM - Search Task                                      │
-│ Task: "Search for top AI conferences this month"                        │
-│                                                                         │
-│ Generated Code:                                                         │
-│   const response = await codemode["tool__qBCGV7O_google_search"]({      │
-│     q: "top AI conferences happening this month"                        │
-│   });                                                                   │
-│   return response;                                                      │
-│                                                                         │
-│ Result: Found AI conferences (DataCamp list, AI4, AAAI, etc.)           │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 3: CODEMODE LLM - Calendar Task (with RETRY)                       │
-│ Task: "Schedule calendar event with no overlaps"                        │
-│                                                                         │
-│ Attempt 1: Failed - wrong date format for create-event                  │
-│ ⟳ RETRY with error context                                              │
-│ Attempt 2: Success - used list-calendars first, then create-event       │
-│                                                                         │
-│ Generated Code (Attempt 2):                                             │
-│   const calResponse = await codemode["tool_Wh_7pp1j_list-calendars"]({})|
-│   const cals = JSON.parse(calResponse.content[0].text);                 │
-│   const primaryCal = cals.calendars.find(c => c.primary);               │
-│   // ... create event with correct format                               │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 4: CODEMODE LLM - GitHub Task (with RETRY)                         │
-│ Task: "Create repo, README, issue, and comment"                         │
-│                                                                         │
-│ Attempt 1: Failed - didn't parse MCP response format                    │
-│ ⟳ RETRY with error context                                              │
-│ Attempt 2: Failed - owner extraction issue                              │
-│ ⟳ RETRY with error context                                              │
-│ Attempt 3: Used search_repositories to find owner                       │
-│                                                                         │
-│ Generated Code (Attempt 3):                                             │
-│   // Step 1: Search for repo to get owner                               │
-│   const searchResp = await codemode["tool_CyZrHWVk_search_repositories"]│
-│     ({ query: "codemodetest" });                                        │
-│   const searchData = JSON.parse(searchResp.content[0].text);            │
-│   const repo = searchData.items.find(r => r.name === "codemodetest");   │
-│   const owner = repo.owner.login;  // "rounakbende10"                   │
-│                                                                         │
-│   // Step 2: Create/update README                                       │
-│   await codemode["tool_CyZrHWVk_create_or_update_file"]({               │
-│     owner, repo: "codemodetest", path: "README.md",                     │
-│     content: "this is codemode test", message: "Add README"             │
-│   });                                                                   │
-│                                                                         │
-│   // Step 3: Create issue                                               │
-│   const issue = await codemode["tool_CyZrHWVk_create_issue"]({          │
-│     owner, repo: "codemodetest", title: "testing code mode"             │
-│   });                                                                   │
-│                                                                         │
-│   // Step 4: Add comment                                                │
-│   await codemode["tool_CyZrHWVk_add_issue_comment"]({                   │
-│     owner, repo: "codemodetest",                                        │
-│     issue_number: issue.number,                                         │
-│     body: "rounak is looking into it"                                   │
-│   });                                                                   │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 5: MAIN LLM RESPONSE COMPLETE                                      │
-│                                                                         │
-│ Main LLM Tokens: in=23,722 out=189 total=23,911                         │
-│ Codemode Tokens: in=37,123 out=5,411 total=42,534                       │
-│ Duration: ~109 seconds (includes retries)                               │
-└─────────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│ #1 Search AI     │────▶│ #2 Get current   │────▶│ #3 Schedule      │
+│ conferences      │     │ date/time        │     │ calendar events  │
+│ (13,384 tokens)  │     │ (12,296 tokens)  │     │ (25,000 tokens)  │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+                                                          │
+        ┌─────────────────────────────────────────────────┘
+        ▼
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│ #4 Check repo    │────▶│ #5 Create repo + │────▶│ #6 Create issue  │
+│ exists           │     │ README           │     │                  │
+│ (13,817 tokens)  │     │ (18,322 tokens)  │     │ (13,366 tokens)  │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+                                                          │
+                                                          ▼
+                                              ┌──────────────────┐
+                                              │ #7 Add comment   │
+                                              │ (13,207 tokens)  │
+                                              └──────────────────┘
 ```
+
+Note: Codemode calls are sequential (Main LLM waits for each result). However, _within_ each codemode call, the generated JavaScript can execute multiple tool calls in parallel using `Promise.all()`.
 
 **Key Observations:**
 
-1. **Retry Mechanism Working**: The retry mechanism successfully caught V8 isolate errors and re-prompted the LLM with error context. Calendar task succeeded after 2 attempts.
+1. **Proper Task Decomposition**: The Main LLM correctly decomposed the complex query into 7 granular sub-tasks, ensuring no part of the request was missed.
 
-2. **MCP Response Parsing**: After adding the JSON.parse instruction, the LLM correctly parsed `response.content[0].text` to access the actual data.
+2. **Calendar Scheduling Included**: Calendar events were successfully created for the found AI conferences.
 
-3. **Dependency-Aware Tool Ordering**: The LLM learned to call `search_repositories` first to discover the `owner` before using it in subsequent GitHub API calls.
+3. **Dependency-Aware Tool Ordering**: The LLM calls `search_repositories` first to discover the `owner` before using it in subsequent GitHub API calls.
 
 4. **Owner Discovery Pattern**:
    ```
@@ -828,485 +772,146 @@ Examples: `tool_LsJQQ4r_google_search`, `tool_Rgo1O6n7_list-calendars`
 
 **Metrics Summary:**
 
-| Metric             | Value                                                                                                                         |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| MCP Servers        | 3 (Serper, Calendar, GitHub)                                                                                                  |
-| Codemode LLM Calls | 3+ (with retries)                                                                                                             |
-| Retry Attempts     | 2-3 per failed task                                                                                                           |
-| Total Tool Calls   | 8+ (google_search, list-calendars, create-event, search_repositories, create_or_update_file, create_issue, add_issue_comment) |
-| Main LLM Tokens    | 23,911                                                                                                                        |
-| Codemode Tokens    | 42,534                                                                                                                        |
-| Total Tokens       | ~66,445                                                                                                                       |
-| Duration           | ~109 seconds                                                                                                                  |
+| Metric             | Value                                                                                                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP Servers        | 3 (Serper, Calendar, GitHub)                                                                                                                                                            |
+| Codemode LLM Calls | 7                                                                                                                                                                                       |
+| Total Tool Calls   | 15+ (google_search, get-current-time, list-calendars, get-freebusy, create-event ×3, search_repositories ×3, create_repository, create_or_update_file, create_issue, add_issue_comment) |
+| Codemode Tokens    | ~109,392 (sum of all 7 calls)                                                                                                                                                           |
+| Avg Tokens/Call    | ~15,627                                                                                                                                                                                 |
+| Duration           | ~3 minutes                                                                                                                                                                              |
 
-**Outcome:** Successfully demonstrated multi-MCP-server orchestration with retry mechanism. The query spanned search, calendar, and GitHub operations, showcasing Codemode's ability to handle complex multi-tool workflows with self-correction.
+**Token Breakdown by Codemode Call:**
+
+| Call #    | Task                     | Input      | Output     | Total       |
+| --------- | ------------------------ | ---------- | ---------- | ----------- |
+| 1         | Search AI conferences    | 12,043     | 1,341      | 13,384      |
+| 2         | Get current date/time    | 12,005     | 291        | 12,296      |
+| 3         | Schedule calendar events | 12,182     | 12,818     | 25,000      |
+| 4         | Check repo exists        | 12,018     | 1,799      | 13,817      |
+| 5         | Create repo + README     | 12,042     | 6,280      | 18,322      |
+| 6         | Create issue             | 12,038     | 1,328      | 13,366      |
+| 7         | Add comment              | 12,033     | 1,174      | 13,207      |
+| **Total** |                          | **84,361** | **25,031** | **109,392** |
+
+**Outcome:** All tasks completed successfully:
+
+- ✅ Searched for AI conferences (found AI2 Summit, AI Dev World, etc.)
+- ✅ Scheduled conferences on Google Calendar
+- ✅ Created codemodetest repository
+- ✅ Added README with correct content
+- ✅ Created issue "testing code mode"
+- ✅ Added comment "rounak is looking into it"
+
+**Key Insight:** Fine-grained task decomposition results in more codemode calls but ensures no tasks are missed. Each call starts at ~12K input tokens (context isolation), preventing token accumulation.
 
 ---
 
-### Simple-LLM: Same Multi-Tool Query
+### Simple-LLM: Same Multi-Tool Query (Comparison)
 
-**Query:** Same as above - "search for top AI conferences this month and schedule my calendar event with no overlaps. check for "codemodetest" repo if not present Create a git repo named "codemodetest" and add a Readme file stating "this is codemode test" and create an issue stating "testing code mode" and add a comment on the same issue stating "rounak is looking into it"
+**Query:** Same as Codemode test above
 
-**MCP Servers Used:**
+**Log File:** `logs/simple-llm-multi-tool-test.log`
 
-- Serper (Google Search)
-- Google Calendar
-- GitHub
+**Execution Summary:**
 
-**Log File:** `logs/simple-llm-multi-tool-test-20260204-165035.log`
+| Request | Tokens | Tool Calls | Outcome                                          |
+| ------- | ------ | ---------- | ------------------------------------------------ |
+| #1      | 17,496 | 8          | Search ✅, GitHub ✅, Issue ❌, Calendar skipped |
+| #2      | ~7,000 | 2          | Calendar ✅ (after user clarification), Issue ❌ |
 
-**Execution Flow:**
+**Key Differences from Codemode:**
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ REQUEST #1: GPT-5-mini                                                   │
-│ Tokens: in=16,280 out=1,216 total=17,496 | Duration: 95.6s               │
-│                                                                         │
-│ Tool Calls (8 total):                                                   │
-│   1. google_search → Found AI conferences (World AI Cannes, etc.)       │
-│   2. search_repositories → Searched for "simplellmtest"                 │
-│   3. create_repository → Created rounakbende10/simplellmtest            │
-│   4. push_files → Attempted file push                                   │
-│   5. create_or_update_file → Added README.md                            │
-│   6. create_issue → ❌ FAILED (milestone: 0 validation error)           │
-│   7. create_issue → ❌ FAILED (retry with different body)               │
-│   8. create_issue → ❌ FAILED (third attempt)                           │
-│                                                                         │
-│ Calendar: NOT attempted - LLM asked clarifying questions instead        │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+1. **Asks Before Acting**: Requested clarification for calendar ("Which calendar? What format?") instead of autonomous execution
 
-**LLM Response Behavior:**
+2. **Parameter Pollution**: AI SDK included invalid defaults that caused failures:
 
-Instead of autonomously executing all tasks, Simple-LLM:
+   ```json
+   { "milestone": 0, "assignees": [], "labels": [] } // ← GitHub rejects milestone: 0
+   ```
 
-1. ✅ Completed search and GitHub repo creation
-2. ⏸️ **Paused for calendar** - Asked "Which calendar should I use?" and "What event format?"
-3. ❌ **Failed on issue creation** - Explained the error and offered workarounds
+3. **No Self-Correction**: Explained errors but couldn't auto-retry like Codemode
 
-**User Interaction Required:**
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ User Reply #1: "Use primary calendar, all-day events, default timezone" │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ REQUEST #2: GPT-5-mini                                                   │
-│                                                                         │
-│ Tool Calls:                                                             │
-│   1. create-event → ✅ Created "World AI Cannes Festival" (Feb 12-13)   │
-│   2. create_issue → ❌ Still failed (milestone: 0 error persists)       │
-│                                                                         │
-│ Result: Calendar event created, issue creation still failing            │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-**Issue Creation Failure Analysis:**
-
-Simple-LLM's `create_issue` calls included invalid parameters:
-
-```json
-{
-  "owner": "rounakbende10",
-  "repo": "simplellmtest",
-  "title": "testing simple llm mode",
-  "body": "Issue created by assistant",
-  "assignees": [],
-  "milestone": 0, // ← INVALID! GitHub rejects milestone: 0
-  "labels": []
-}
-```
-
-The issue was manually created via direct API call (bypassing MCP):
-
-```bash
-curl -X POST "https://api.github.com/repos/rounakbende10/simplellmtest/issues" \
-  -d '{"title":"testing simple llm mode","body":"testing simple llm mode"}'
-```
-
-**Result:** ✅ Success - https://github.com/rounakbende10/simplellmtest/issues/1
-
-**Metrics Summary:**
-
-| Metric        | Value                                   |
-| ------------- | --------------------------------------- |
-| LLM Requests  | 2 (required user interaction)           |
-| Tool Calls    | 8 (first request) + 2 (second request)  |
-| Total Tokens  | ~17,496 (first request only)            |
-| Duration      | 95.6s (first request)                   |
-| Calendar Task | ✅ Completed (after user clarification) |
-| GitHub Repo   | ✅ Completed                            |
-| GitHub Issue  | ❌ Failed (MCP parameter bug)           |
-
-**Key Observations:**
-
-1. **Asks Before Acting**: Simple-LLM requested clarification for calendar operations instead of making autonomous decisions.
-
-2. **No Retry Mechanism**: When `create_issue` failed, Simple-LLM explained the error and offered workarounds but couldn't self-correct.
-
-3. **Parameter Pollution**: The AI SDK/LLM included unnecessary parameters (`milestone: 0`, `assignees: []`, `labels: []`) that caused validation errors.
-
-4. **User-Friendly Errors**: Simple-LLM provided clear explanations of failures and actionable next steps.
-
-**Outcome:** Partially completed. Search and GitHub repo succeeded. Calendar required user interaction. Issue creation failed due to MCP parameter handling bug (not a Simple-LLM issue).
+**Outcome:** Partial completion. Required user interaction for calendar. Issue creation failed due to invalid default parameters.
 
 ---
 
 ## Comparative Analysis: Codemode vs Simple-LLM
 
-### Simple-LLM Execution Flow (Same Query)
+### Behavioral Differences
 
-**Query:** "Get top AI conferences this month and create an event on my calendar"
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ REQUEST #1: GPT-5-mini                                                   │
-│ Tokens: in=6044 out=867 total=6911 | Duration: 15.3s                     │
-│                                                                         │
-│ LLM asked clarifying questions:                                         │
-│   "Which calendar would you like to use?"                               │
-│   "What time zone should I use?"                                        │
-│                                                                         │
-│ Result: No tools called, waiting for user response                      │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼ User provides answer
-┌─────────────────────────────────────────────────────────────────────────┐
-│ REQUEST #2: GPT-5-mini                                                   │
-│ Tokens: in=6221 out=500 total=6721 | Duration: 11.3s                     │
-│                                                                         │
-│ LLM asked more clarifying questions:                                    │
-│   "Which conference would you like me to add?"                          │
-│   "Should I check for conflicts first?"                                 │
-│                                                                         │
-│ Result: No tools called, waiting for user response                      │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼ User provides direction
-┌─────────────────────────────────────────────────────────────────────────┐
-│ REQUEST #3: GPT-5-mini                                                   │
-│ Tokens: in=13031 out=971 total=14002 | Duration: 72.8s                   │
-│                                                                         │
-│ Sequential Tool Calls:                                                  │
-│   1. get-current-time → Get current timestamp                           │
-│   2. get-current-time → Retry with different account                    │
-│   3. google_search → Search "AI conferences February 2026"              │
-│      Result: Empty (date filter too restrictive)                        │
-│   4. google_search → Broader search                                     │
-│      Result: Found AI DevWorld, TechEx, etc.                            │
-│   5. google_search → Verify AI DevWorld dates                           │
-│      Result: Feb 18-20, 2026 confirmed                                  │
-│   6. get-freebusy → Check calendar conflicts                            │
-│      Result: Minor conflicts found                                      │
-│   7. create-event → Create "AI DevWorld 2026" event                     │
-│      Result: Event created successfully                                 │
-│                                                                         │
-│ Total tool calls: 7 (sequential, with LLM reasoning between each)       │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| Behavior               | Codemode                                     | Simple-LLM                                 |
+| ---------------------- | -------------------------------------------- | ------------------------------------------ |
+| **Execution style**    | Autonomous - completes all tasks in one flow | Interactive - asks clarifying questions    |
+| **Tool execution**     | Parallel via `Promise.all()`                 | Sequential with LLM reasoning between each |
+| **Error handling**     | Retry mechanism with error feedback          | Explains error, offers workarounds         |
+| **Task decomposition** | Main LLM splits into granular subtasks       | Single context handles everything          |
 
 ### Token Comparison
 
-#### Codemode Token Breakdown
+| System         | Requests            | Total Tokens | Duration | Notes                             |
+| -------------- | ------------------- | ------------ | -------- | --------------------------------- |
+| **Codemode**   | 1 Main + 7 Codemode | ~111,892     | ~3 min   | ~12K per Codemode call (constant) |
+| **Simple-LLM** | 3                   | ~27,634      | 99.4s    | Context grows: 6K → 13K           |
 
-| Component         | Input      | Output    | Total      | Notes               |
-| ----------------- | ---------- | --------- | ---------- | ------------------- |
-| Main LLM (GPT-4o) | 4,205      | 87        | 4,292      | Orchestration only  |
-| Codemode LLM #1   | 7,560      | 108       | 7,668      | google_search code  |
-| Codemode LLM #2   | 7,561      | 1,297     | 8,858      | Schedule check code |
-| Codemode LLM #3   | 7,582      | 1,144     | 8,726      | Create event code   |
-| **Total**         | **26,908** | **2,636** | **29,544** |                     |
-| **Duration**      |            |           | **40.5s**  |                     |
+**Codemode breakdown:** Each of the 7 Codemode LLM calls used ~12K input tokens (tool definitions + task), regardless of conversation history. This is the key architectural difference.
 
-#### Simple-LLM Token Breakdown
-
-| Request      | Input      | Output    | Total      | Notes                |
-| ------------ | ---------- | --------- | ---------- | -------------------- |
-| #1           | 6,044      | 867       | 6,911      | Asked clarification  |
-| #2           | 6,221      | 500       | 6,721      | Asked more questions |
-| #3           | 13,031     | 971       | 14,002     | Executed 7 tools     |
-| **Total**    | **25,296** | **2,338** | **27,634** |                      |
-| **Duration** |            |           | **99.4s**  |                      |
-
-### Context Accumulation Pattern
+### Context Isolation: The Key Architectural Difference
 
 ```
 Simple-LLM (Accumulating Context):
 ┌────────────────────────────────────────────────────────────────┐
-│ Request 1:  6,044 tokens  ───┐                                  │
-│ Request 2:  6,221 tokens  ───┼──► Context grows each turn       │
-│ Request 3: 13,031 tokens  ───┘    (+110% from #2 to #3)         │
+│ Request 1:  ~16K tokens  ───┐                                   │
+│ Request 2:  ~32K tokens  ───┼──► Context grows each turn        │
+│ Request 3:  ~50K tokens  ───┘    (carries full history)         │
 │                                                                 │
-│ Each request includes:                                          │
-│   - Full conversation history                                   │
-│   - Previous tool calls and results                             │
-│   - Growing context = growing cost                              │
+│ Token Growth: O(n) - linear with conversation length            │
 └────────────────────────────────────────────────────────────────┘
 
 Codemode (Independent Context):
 ┌────────────────────────────────────────────────────────────────┐
-│ Main LLM:     4,205 tokens  (one-time orchestration)            │
-│ Codemode #1:  7,560 tokens  ───┐                                │
-│ Codemode #2:  7,561 tokens  ───┼──► Each starts fresh (~7.5K)   │
-│ Codemode #3:  7,582 tokens  ───┘    No history accumulation     │
+│ Main LLM:     ~2.5K tokens  (orchestration only)                │
+│ Codemode #1: ~12K tokens  ───┐                                  │
+│ Codemode #2: ~12K tokens  ───┼──► Each starts fresh             │
+│ Codemode #N: ~12K tokens  ───┘    (no history accumulation)     │
 │                                                                 │
-│ Each Codemode call includes:                                    │
-│   - Tool definitions (~7K tokens)                               │
-│   - Current task description only                               │
-│   - No conversation history carried forward                     │
+│ Token Growth: O(1) - constant per Codemode call                 │
 └────────────────────────────────────────────────────────────────┘
 ```
 
-### Token Accumulation: Detailed Breakdown
+**Why This Matters:**
 
-**How Simple-LLM Token Usage Builds Up Per User Interaction:**
-
-From our multi-tool test logs:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ User Interaction #1 (Initial Query)                                          │
-│ ────────────────────────────────────────────────────────────────────────────│
-│ Input Tokens:      16,280                                                    │
-│ Output Tokens:      1,216                                                    │
-│ Total:             17,496                                                    │
-│ Cumulative Total:  17,496                                                    │
-│                                                                              │
-│ Context includes: System prompt + Tools schema + User query                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼ User provides clarification
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ User Interaction #2 (Clarification Response)                                 │
-│ ────────────────────────────────────────────────────────────────────────────│
-│ Input Tokens:      15,614                                                    │
-│ Output Tokens:         846                                                   │
-│ Total:             16,460                                                    │
-│ Cumulative Total:  33,956  (+94% growth from interaction #1)                 │
-│                                                                              │
-│ Context includes: Everything from #1 + User's answer + LLM's previous output │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼ User provides further direction
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ User Interaction #3 (Execute Task)                                           │
-│ ────────────────────────────────────────────────────────────────────────────│
-│ Input Tokens:      ~16,000 (estimated)                                       │
-│ Cumulative Total:  ~50,000+ (3x initial request)                             │
-│                                                                              │
-│ Context includes: Full conversation history + All previous tool calls/results│
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Token Growth Formula for Simple-LLM:**
-
-```
-Request N tokens ≈ Base tokens + Σ(all previous request/response pairs)
-                 ≈ Base tokens + (N-1) × avg_turn_size
-```
-
-**How Codemode Token Usage Remains Constant:**
-
-From our multi-tool test logs:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ Main LLM (Orchestration Layer)                                               │
-│ ────────────────────────────────────────────────────────────────────────────│
-│ Input Tokens:       6,217                                                    │
-│ Output Tokens:        178                                                    │
-│ Total:              6,395                                                    │
-│                                                                              │
-│ This is the ONLY component that sees user interaction history                │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-        ┌───────────────────────────┼───────────────────────────┐
-        ▼                           ▼                           ▼
-┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│ Codemode LLM #1  │    │ Codemode LLM #2  │    │ Codemode LLM #3  │
-│ ─────────────────│    │ ─────────────────│    │ ─────────────────│
-│ Input:   11,936  │    │ Input:   11,948  │    │ Input:   11,941  │
-│ Output:     180  │    │ Output:     354  │    │ Output:     463  │
-│ Total:   12,116  │    │ Total:   12,302  │    │ Total:   12,404  │
-│                  │    │                  │    │                  │
-│ No history from  │    │ No history from  │    │ No history from  │
-│ previous calls   │    │ previous calls   │    │ previous calls   │
-└──────────────────┘    └──────────────────┘    └──────────────────┘
-
-Each Codemode LLM call starts fresh at ~12,000 tokens:
-  - Tool definitions & schemas:     ~10,500 tokens (fixed)
-  - Task description from Main LLM:  ~1,500 tokens (variable, but small)
-  - NO conversation history carried forward
-```
-
-**Key Insight: Context Isolation**
-
-| Aspect                                | Simple-LLM                    | Codemode                         |
-| ------------------------------------- | ----------------------------- | -------------------------------- |
-| **Starting tokens (1st request)**     | ~16,000                       | Main: ~6,000 / Codemode: ~12,000 |
-| **Starting tokens (2nd interaction)** | ~32,000 (cumulative)          | Main: ~6,500 / Codemode: ~12,000 |
-| **Starting tokens (3rd interaction)** | ~50,000+ (cumulative)         | Main: ~7,000 / Codemode: ~12,000 |
-| **Token growth rate**                 | O(n) linear with interactions | O(1) constant for Codemode calls |
-| **History carried**                   | Full conversation             | Only Main LLM sees history       |
-
-**Why This Matters for Multi-Step Tasks:**
-
-```
-Simple-LLM with 3 user interactions (from actual test):
-  Request 1: 17,496 tokens
-  Request 2: 16,460 tokens (+ cumulative context = 33,956 total spent)
-  Request 3: ~16,000 tokens (+ cumulative context = ~50,000 total spent)
-  ─────────────────────────────
-  Total spent: ~50,000 tokens
-
-  NOTE: Each subsequent request carries ALL previous context!
-
-Codemode with 10 internal calls (from actual test - same query):
-  Main LLM:      6,395 tokens (orchestration, sees user history)
-  Codemode #1:  12,116 tokens  ─┐
-  Codemode #2:  12,302 tokens   │  ← Includes 3 retry attempts
-  Codemode #3:  12,404 tokens   │    (V8 isolate errors that
-  Codemode #4:  12,227 tokens   │     triggered retry mechanism)
-  Codemode #5:  12,687 tokens   ├── Each call is INDEPENDENT
-  Codemode #6:  13,956 tokens   │   (no history accumulation)
-  Codemode #7:  14,398 tokens   │
-  Codemode #8:  17,405 tokens   │
-  Codemode #9:  13,055 tokens   │
-  Codemode #10: 12,418 tokens  ─┘
-  ─────────────────────────────
-  Total WITH retries: ~139,363 tokens
-
-Codemode WITHOUT retries (removing 3 failed attempts):
-  Main LLM:      6,395 tokens
-  Codemode calls: 7 × ~13,000 avg = ~91,000 tokens
-  ─────────────────────────────
-  Total WITHOUT retries: ~97,395 tokens
-
-  Completed in 1 user interaction vs 3!
-```
-
-**Token Cost vs User Experience Trade-off:**
-
-| Aspect             | Simple-LLM   | Codemode (with retries) | Codemode (no retries) |
-| ------------------ | ------------ | ----------------------- | --------------------- |
-| Total tokens       | ~50K         | ~139K                   | ~97K                  |
-| User interactions  | 3            | 1                       | 1                     |
-| Time to completion | 155+ sec     | 40.5 sec                | ~30 sec (estimated)   |
-| Context growth     | Accumulating | Constant per call       | Constant per call     |
-
-**When Codemode Token Efficiency Wins:**
-
-Codemode becomes more token-efficient when:
-
-1. Tasks require many tool calls (each Codemode call can execute multiple tools)
-2. Simple-LLM would require many back-and-forth clarifications
-3. Tool results are large (they don't accumulate in Codemode's context)
-
-```
-Example: A task requiring 10 user interactions
-
-Simple-LLM: 16K × (1 + 2 + 3 + ... + 10) ≈ 880K tokens (quadratic growth)
-Codemode:   6K + (12K × 10) = 126K tokens (linear growth)
-```
-
-**Architectural Advantage:**
-
-Codemode's two-tier architecture provides **context isolation**:
-
-1. **Main LLM** (small context): Handles user interaction, sees conversation history, but only does high-level orchestration
-2. **Codemode LLM** (fixed context): Receives isolated task descriptions, generates code, never sees conversation history
-
-This isolation means that no matter how many user interactions occur, each Codemode call always starts at the same ~12,000 token baseline.
+| Aspect                  | Simple-LLM              | Codemode              |
+| ----------------------- | ----------------------- | --------------------- |
+| **Context per request** | Grows with conversation | Fixed ~12K per call   |
+| **10 interactions**     | ~880K tokens (sum)      | ~126K tokens          |
+| **History carried**     | Full conversation       | Only Main LLM sees it |
+| **Scalability**         | Degrades over time      | Constant performance  |
 
 ### Performance Summary
 
-| Metric                | Codemode | Simple-LLM | Difference |
-| --------------------- | -------- | ---------- | ---------- |
-| **Total Tokens**      | 29,544   | 27,634     | +6.9%      |
-| **Duration**          | 40.5s    | 99.4s      | **-59%**   |
-| **User Interactions** | 1        | 3          | -66%       |
-| **LLM Requests**      | 4        | 3          | +33%       |
-| **Tool Calls**        | 5        | 7          | -29%       |
-| **Context Growth**    | None     | +110%      | N/A        |
+| Metric                | Codemode | Simple-LLM | Winner   |
+| --------------------- | -------- | ---------- | -------- |
+| **All Tasks Done**    | ✅ Yes   | ❌ Partial | Codemode |
+| **User Interactions** | 1        | 3          | Codemode |
+| **Context Growth**    | O(1)     | O(n)       | Codemode |
+| **Total Tokens**      | ~111,892 | ~27,634    | N/A\*    |
+| **Duration**          | ~3 min   | 99.4s      | N/A\*    |
 
-### Why Codemode is 2.5x Faster
+\*Token and duration comparisons are not meaningful when one system failed to complete the task.
 
-1. **No Context Accumulation**: Each Codemode LLM call starts fresh with ~7.5K tokens (tools + task). Simple-LLM context grows from 6K → 13K as conversation history accumulates.
+**Conclusion:** Codemode completed all tasks autonomously with constant-time scalability. Simple-LLM used fewer tokens but failed to complete the full task and required user interaction.
 
-2. **No User Interaction Required**: Simple-LLM asked for clarification twice before executing. Codemode completed autonomously in one flow.
+### Tool Parameter Handling
 
-3. **Parallel Execution Potential**: Codemode-generated code can use `Promise.all()` for parallel tool calls. Simple-LLM executes tools sequentially with LLM reasoning between each.
+A key architectural advantage of Codemode is precise parameter control:
 
-4. **Smaller Orchestration Overhead**: Main LLM uses only 4,292 tokens for high-level orchestration. Heavy lifting is delegated to specialized Codemode LLM.
+| Approach       | Parameter Behavior                     | Example                     |
+| -------------- | -------------------------------------- | --------------------------- |
+| **Codemode**   | Only explicit params in generated code | `{ owner, repo, title }` ✅ |
+| **Simple-LLM** | Schema defaults may be included        | `{ ..., milestone: 0 }` ❌  |
 
-5. **Code-Based Control Flow**: Generated JavaScript handles loops, conditionals, and data processing locally without LLM round-trips.
-
-### Tool Parameter Handling: A Critical Difference
-
-When testing the same multi-tool query on both systems, we discovered a significant architectural difference in how tool parameters are handled.
-
-**Test Case:** GitHub `create_issue` API call
-
-**Codemode's Generated Code:**
-
-```javascript
-await codemode["tool_CyZrHWVk_create_issue"]({
-  owner: "rounakbende10",
-  repo: "codemodetest",
-  title: "testing code mode"
-});
-```
-
-**Result:** ✅ Success - Issue created
-
-**Simple-LLM's Tool Call:**
-
-```json
-{
-  "owner": "rounakbende10",
-  "repo": "simplellmtest",
-  "title": "testing simple llm mode",
-  "body": "Issue created by assistant",
-  "assignees": [],
-  "milestone": 0,
-  "labels": []
-}
-```
-
-**Result:** ❌ Failed - `milestone: 0` is invalid (GitHub API rejects it)
-
-**Root Cause Analysis:**
-
-| Aspect                  | Codemode                                        | Simple-LLM                                       |
-| ----------------------- | ----------------------------------------------- | ------------------------------------------------ |
-| **Tool Invocation**     | Generated JavaScript with explicit parameters   | AI SDK tool calling with schema-based parameters |
-| **Optional Parameters** | Only includes what LLM writes in code           | Includes all schema fields, may use defaults     |
-| **Parameter Control**   | Full control - LLM decides exactly what to pass | SDK/LLM may add default values (`milestone: 0`)  |
-| **Validation Errors**   | Rare - minimal parameters sent                  | More common - invalid defaults cause failures    |
-
-**Why This Matters:**
-
-1. **Codemode generates minimal, precise API calls**: The LLM writes JavaScript that only includes the parameters it explicitly needs. Optional parameters like `milestone`, `assignees`, `labels` are simply not included in the generated code.
-
-2. **Simple-LLM includes schema defaults**: The AI SDK's tool calling mechanism constructs the full parameter object from the schema. If the LLM doesn't specify a value for an optional numeric field, it may default to `0`, which can be invalid for some APIs.
-
-3. **GitHub MCP Server behavior**: The `@modelcontextprotocol/server-github` package passes through all parameters it receives. When Simple-LLM sends `milestone: 0`, the MCP server forwards it to GitHub, causing a validation error.
-
-**Architectural Advantage of Code Generation:**
-
-```
-Traditional Tool Calling:
-  LLM → Schema-based params → MCP Server → API
-        (may include invalid defaults)
-
-Codemode:
-  LLM → Generate JS code → Execute → MCP Server → API
-        (only explicit params)
-```
-
-This finding demonstrates that code generation provides more precise control over API calls, reducing the likelihood of validation errors caused by invalid default values.
+**Why this matters:** Code generation lets the LLM include only the parameters it needs. Traditional tool calling may include schema defaults (like `milestone: 0`) that cause API validation errors.
 
 ---
 

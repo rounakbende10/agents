@@ -33,8 +33,8 @@ declare global {
   }
 }
 
-// OpenAI
-const model = openai("gpt-4o");
+// OpenAI - Using GPT-5-mini for better task decomposition
+const model = openai("gpt-5-mini");
 
 // Global outbound handler as a WorkerEntrypoint for Vite plugin compatibility
 export class globalOutbound extends WorkerEntrypoint {
@@ -63,10 +63,18 @@ type TokenUsage = {
 };
 
 type RequestMetrics = {
+  // Current request metrics
   usage?: TokenUsage;
   codemodeUsage?: TokenUsage;
   durationMs?: number;
   timestamp?: string;
+  // Cumulative metrics across all requests in session
+  requestCount?: number;
+  cumulativeUsage?: TokenUsage;
+  cumulativeDurationMs?: number;
+  // Codemode-specific metrics
+  codemodeCallCount?: number;
+  retryCount?: number;
 };
 
 type State = {
@@ -154,7 +162,16 @@ export class Codemode extends Agent<Env, State> {
     this.tools = allTools;
 
     const { prompt: codemodePrompt, tools: wrappedTools } = await codemode({
-      prompt: `You are a helpful assistant that can do various tasks... 
+      prompt: `You are a helpful assistant that can do various tasks using the codemode tool.
+
+CRITICAL: When the user gives you a complex query with MULTIPLE tasks, you MUST call the codemode tool SEPARATELY for EACH distinct task. Do NOT skip any part of the user's request.
+
+For example, if the user says "search for AI conferences AND schedule them on my calendar AND create a GitHub repo":
+1. Call codemode for: "search for AI conferences"
+2. Call codemode for: "schedule the found conferences on my calendar with no conflicts"
+3. Call codemode for: "create the GitHub repo with README and issue"
+
+IMPORTANT: Always include calendar/scheduling tasks as separate codemode calls when mentioned. Never skip the calendar scheduling part.
 
 ${getSchedulePrompt({ date: new Date() })}
 
@@ -174,9 +191,12 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
 
     const userMessage = this.state.messages[this.state.messages.length - 1];
     console.log("\n╔═════════════════════════════════════════════════════════");
-    console.log("║ [MAIN LLM] GPT-4o");
+    console.log("║ [MAIN LLM] GPT-5-mini");
     console.log("╠═════════════════════════════════════════════════════════");
-    console.log("║ User Input:", userMessage?.content);
+    console.log(
+      "║ User Input:",
+      userMessage?.parts?.map((p: any) => p.text).join(" ")
+    );
     console.log("║ Available Tools:", Object.keys(wrappedTools).join(", "));
     console.log("╚═════════════════════════════════════════════════════════");
 
@@ -217,38 +237,93 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
     const durationMs = Date.now() - startTime;
     const usage = await result.usage;
 
-    // Extract codemodeUsage from tool results
-    let codemodeUsage: TokenUsage | undefined;
+    // Extract and ACCUMULATE codemodeUsage from ALL codemode tool calls
+    let codemodeUsage: TokenUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0
+    };
+    let codemodeCallCount = 0;
+    let retryCount = 0;
+
     for (const msg of this.state.messages) {
       if (msg.role === "assistant" && msg.parts) {
         for (const part of msg.parts) {
           const toolPart = part as any;
+
+          // Check for tool output format
           if (
             toolPart.type?.startsWith("tool-") &&
             toolPart.output?.codemodeUsage
           ) {
-            codemodeUsage = toolPart.output.codemodeUsage;
-          } else if (
+            const usage = toolPart.output.codemodeUsage;
+            codemodeUsage.inputTokens += usage.inputTokens ?? 0;
+            codemodeUsage.outputTokens += usage.outputTokens ?? 0;
+            codemodeUsage.totalTokens += usage.totalTokens ?? 0;
+            codemodeCallCount += toolPart.output.codemodeCallCount ?? 0;
+            retryCount += toolPart.output.retryCount ?? 0;
+          }
+
+          // Check for tool-invocation format
+          if (
             part.type === "tool-invocation" &&
             toolPart.toolInvocation?.result?.codemodeUsage
           ) {
-            codemodeUsage = toolPart.toolInvocation.result.codemodeUsage;
+            const usage = toolPart.toolInvocation.result.codemodeUsage;
+            codemodeUsage.inputTokens += usage.inputTokens ?? 0;
+            codemodeUsage.outputTokens += usage.outputTokens ?? 0;
+            codemodeUsage.totalTokens += usage.totalTokens ?? 0;
+            codemodeCallCount +=
+              toolPart.toolInvocation.result.codemodeCallCount ?? 0;
+            retryCount += toolPart.toolInvocation.result.retryCount ?? 0;
           }
         }
       }
     }
 
+    // Convert to undefined if no codemode usage was found
+    const hasCodemodeUsage = codemodeUsage.totalTokens > 0;
+
+    // Calculate cumulative metrics
+    const prevMetrics = this.state.metrics;
+    const prevRequestCount = prevMetrics?.requestCount ?? 0;
+    const prevCumulative = prevMetrics?.cumulativeUsage ?? {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0
+    };
+
+    const currentUsage: TokenUsage = {
+      inputTokens:
+        (usage?.inputTokens ?? 0) + (codemodeUsage?.inputTokens ?? 0),
+      outputTokens:
+        (usage?.outputTokens ?? 0) + (codemodeUsage?.outputTokens ?? 0),
+      totalTokens: (usage?.totalTokens ?? 0) + (codemodeUsage?.totalTokens ?? 0)
+    };
+
     const metrics: RequestMetrics = {
       usage: usage
         ? {
-            inputTokens: usage.inputTokens ?? usage.promptTokens ?? 0,
-            outputTokens: usage.outputTokens ?? usage.completionTokens ?? 0,
+            inputTokens: usage.inputTokens ?? 0,
+            outputTokens: usage.outputTokens ?? 0,
             totalTokens: usage.totalTokens ?? 0
           }
         : undefined,
-      codemodeUsage,
+      codemodeUsage: hasCodemodeUsage ? codemodeUsage : undefined,
       durationMs,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // Cumulative metrics
+      requestCount: prevRequestCount + 1,
+      cumulativeUsage: {
+        inputTokens: prevCumulative.inputTokens + currentUsage.inputTokens,
+        outputTokens: prevCumulative.outputTokens + currentUsage.outputTokens,
+        totalTokens: prevCumulative.totalTokens + currentUsage.totalTokens
+      },
+      cumulativeDurationMs:
+        (prevMetrics?.cumulativeDurationMs ?? 0) + durationMs,
+      // Codemode-specific
+      codemodeCallCount,
+      retryCount
     };
 
     console.log("\n╔═════════════════════════════════════════════════════════");
@@ -273,6 +348,13 @@ If the user asks to schedule a task, use the schedule tool to schedule the task.
       );
     }
     console.log("║ Duration:", durationMs + "ms");
+    console.log("╠═════════════════════════════════════════════════════════");
+    console.log("║ Request #" + metrics.requestCount);
+    console.log("║ Cumulative Tokens: " + metrics.cumulativeUsage?.totalTokens);
+    console.log("║ Codemode LLM Calls: " + codemodeCallCount);
+    if (retryCount > 0) {
+      console.log("║ Retry Attempts: " + retryCount);
+    }
     console.log("╚═════════════════════════════════════════════════════════");
 
     this.setState({

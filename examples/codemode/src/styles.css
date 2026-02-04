@@ -287,14 +287,42 @@ body {
 /* Metrics Bar */
 .metrics-bar {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1rem 1.5rem;
-  padding: 0.5rem 0.75rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
   background: #1a1a1a;
   border: 1px solid #404040;
   border-radius: 6px;
   margin-bottom: 0.75rem;
   font-size: 0.75rem;
+}
+
+.metrics-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #333;
+}
+
+.metrics-current,
+.metrics-codemode {
+  padding: 0.5rem 0;
+}
+
+.metrics-section-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #666;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.metrics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
 }
 
 .metric-item {
@@ -312,6 +340,57 @@ body {
   color: #f38020;
   font-weight: 600;
   font-family: "Monaco", "Menlo", monospace;
+}
+
+.metric-detail {
+  color: #666;
+  font-size: 0.65rem;
+  margin-left: 0.25rem;
+}
+
+.metric-badge {
+  background: #f38020;
+  color: #fff;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+}
+
+.metric-badge-warning {
+  background: #fbbf24;
+  color: #1a1a1a;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+}
+
+.metric-request .metric-label {
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.metric-cumulative .metric-value {
+  color: #4ade80;
+  font-weight: 700;
+}
+
+.metric-retry .metric-label {
+  color: #fbbf24;
+}
+
+.metrics-context {
+  padding-top: 0.5rem;
+  border-top: 1px solid #333;
+}
+
+.context-badge {
+  display: inline-block;
+  background: #2d3748;
+  color: #68d391;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 500;
 }
 
 .metric-total {

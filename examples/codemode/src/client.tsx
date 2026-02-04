@@ -13,10 +13,18 @@ type TokenUsage = {
 };
 
 type RequestMetrics = {
+  // Current request metrics
   usage?: TokenUsage;
   codemodeUsage?: TokenUsage;
   durationMs?: number;
   timestamp?: string;
+  // Cumulative metrics across all requests in session
+  requestCount?: number;
+  cumulativeUsage?: TokenUsage;
+  cumulativeDurationMs?: number;
+  // Codemode-specific metrics
+  codemodeCallCount?: number;
+  retryCount?: number;
 };
 
 type AgentState = {
@@ -383,46 +391,114 @@ function App() {
           {/* Metrics Display */}
           {metrics && (
             <div className="metrics-bar">
-              {metrics.usage && (
-                <div className="metric-item">
-                  <span className="metric-label">Main LLM (GPT-4o):</span>
-                  <span className="metric-value">
-                    {metrics.usage.inputTokens} in /{" "}
-                    {metrics.usage.outputTokens} out (
-                    {metrics.usage.totalTokens} total)
+              {/* Request counter and cumulative stats */}
+              <div className="metrics-header">
+                <div className="metric-item metric-request">
+                  <span className="metric-label">Request</span>
+                  <span className="metric-value metric-badge">
+                    #{metrics.requestCount ?? 1}
                   </span>
                 </div>
-              )}
-              {metrics.codemodeUsage && (
-                <div className="metric-item">
-                  <span className="metric-label">
-                    Codemode (GPT-5.1-codex-mini):
-                  </span>
-                  <span className="metric-value">
-                    {metrics.codemodeUsage.inputTokens} in /{" "}
-                    {metrics.codemodeUsage.outputTokens} out (
-                    {metrics.codemodeUsage.totalTokens} total)
-                  </span>
+                {metrics.cumulativeUsage && (
+                  <div className="metric-item metric-cumulative">
+                    <span className="metric-label">Session Total:</span>
+                    <span className="metric-value">
+                      {metrics.cumulativeUsage.totalTokens.toLocaleString()}{" "}
+                      tokens
+                    </span>
+                  </div>
+                )}
+                {metrics.cumulativeDurationMs && (
+                  <div className="metric-item">
+                    <span className="metric-label">Session Time:</span>
+                    <span className="metric-value">
+                      {(metrics.cumulativeDurationMs / 1000).toFixed(1)}s
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Current request breakdown */}
+              <div className="metrics-current">
+                <div className="metrics-section-title">Current Request</div>
+                <div className="metrics-grid">
+                  {metrics.usage && (
+                    <div className="metric-item">
+                      <span className="metric-label">Main LLM:</span>
+                      <span className="metric-value">
+                        {metrics.usage.totalTokens.toLocaleString()} tokens
+                        <span className="metric-detail">
+                          ({metrics.usage.inputTokens} in /{" "}
+                          {metrics.usage.outputTokens} out)
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                  {metrics.codemodeUsage && (
+                    <div className="metric-item">
+                      <span className="metric-label">Codemode LLM:</span>
+                      <span className="metric-value">
+                        {metrics.codemodeUsage.totalTokens.toLocaleString()}{" "}
+                        tokens
+                        <span className="metric-detail">
+                          ({metrics.codemodeUsage.inputTokens} in /{" "}
+                          {metrics.codemodeUsage.outputTokens} out)
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                  {metrics.durationMs && (
+                    <div className="metric-item">
+                      <span className="metric-label">Duration:</span>
+                      <span className="metric-value">
+                        {(metrics.durationMs / 1000).toFixed(2)}s
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Codemode-specific stats */}
+              {(metrics.codemodeCallCount || metrics.retryCount) && (
+                <div className="metrics-codemode">
+                  <div className="metrics-section-title">Codemode Stats</div>
+                  <div className="metrics-grid">
+                    {metrics.codemodeCallCount &&
+                      metrics.codemodeCallCount > 0 && (
+                        <div className="metric-item">
+                          <span className="metric-label">LLM Calls:</span>
+                          <span className="metric-value metric-badge">
+                            {metrics.codemodeCallCount}
+                          </span>
+                          <span className="metric-detail">
+                            (~
+                            {Math.round(
+                              (metrics.codemodeUsage?.totalTokens ?? 0) /
+                                Math.max(metrics.codemodeCallCount, 1)
+                            ).toLocaleString()}{" "}
+                            tokens/call)
+                          </span>
+                        </div>
+                      )}
+                    {metrics.retryCount && metrics.retryCount > 0 && (
+                      <div className="metric-item metric-retry">
+                        <span className="metric-label">Retries:</span>
+                        <span className="metric-value metric-badge-warning">
+                          {metrics.retryCount}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
-              {(metrics.usage || metrics.codemodeUsage) && (
-                <div className="metric-item metric-total">
-                  <span className="metric-label">Total:</span>
-                  <span className="metric-value">
-                    {(metrics.usage?.totalTokens || 0) +
-                      (metrics.codemodeUsage?.totalTokens || 0)}{" "}
-                    tokens
-                  </span>
-                </div>
-              )}
-              {metrics.durationMs && (
-                <div className="metric-item">
-                  <span className="metric-label">Duration:</span>
-                  <span className="metric-value">
-                    {(metrics.durationMs / 1000).toFixed(2)}s
-                  </span>
-                </div>
-              )}
+
+              {/* Context isolation indicator */}
+              <div className="metrics-context">
+                <span className="context-badge">
+                  Context Isolation: Each Codemode call starts at ~12K tokens
+                  (no history accumulation)
+                </span>
+              </div>
             </div>
           )}
 

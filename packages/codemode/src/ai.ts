@@ -92,13 +92,17 @@ export async function experimental_codemode(options: {
           outputTokens: z.number(),
           totalTokens: z.number()
         })
-        .optional()
+        .optional(),
+      codemodeCallCount: z.number().optional(),
+      retryCount: z.number().optional()
     }),
     execute: async ({ functionDescription }) => {
       const MAX_RETRIES = 3;
       let lastError: string | null = null;
       let lastCode: string | null = null;
       let cumulativeUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+      let callCount = 0;
+      let retryCount = 0;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
@@ -184,6 +188,11 @@ Analyze the error and generate corrected code. Pay close attention to:
          const data = JSON.parse(response.content[0].text);
          // Now access data.items, data.owner, etc.
 
+         IMPORTANT: Different APIs use different field names:
+         - GitHub search: data.items (array of results)
+         - Serper/Google search: data.organic (array of search results with title, link, snippet)
+         - Calendar list: data.items or just data (array of calendars)
+
       Generate an anonymous async function expression. Do NOT call it, do NOT wrap it in IIFE, do NOT name it.
 
       CORRECT format (use exactly this structure):
@@ -202,7 +211,8 @@ ${retryContext}
       Here is user input: ${functionDescription}`
           });
 
-          // Track cumulative usage
+          // Track cumulative usage and call count
+          callCount++;
           cumulativeUsage.inputTokens += response.usage?.inputTokens ?? 0;
           cumulativeUsage.outputTokens += response.usage?.outputTokens ?? 0;
           cumulativeUsage.totalTokens += response.usage?.totalTokens ?? 0;
@@ -266,6 +276,7 @@ ${retryContext}
             if (attempt < MAX_RETRIES) {
               lastError = errorMsg;
               lastCode = response.object.code;
+              retryCount++;
               console.log(
                 `\n⟳ [RETRY] Attempt ${attempt} failed, will retry with error context...`
               );
@@ -303,7 +314,9 @@ ${retryContext}
           return {
             code: response.object.code,
             result: result,
-            codemodeUsage: cumulativeUsage
+            codemodeUsage: cumulativeUsage,
+            codemodeCallCount: callCount,
+            retryCount: retryCount
           };
         } catch (error) {
           const errorMsg =
@@ -323,6 +336,7 @@ ${retryContext}
           if (attempt < MAX_RETRIES) {
             lastError = errorMsg;
             lastCode = null;
+            retryCount++;
             console.log(`\n⟳ [RETRY] Attempt ${attempt} failed, will retry...`);
             continue;
           }
