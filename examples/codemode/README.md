@@ -112,17 +112,15 @@ examples/codemode/
 
 ### Model Configuration
 
-The code generation model is configured in the `@cloudflare/codemode` package. To change it:
+| Component    | Model                | Purpose                    |
+| ------------ | -------------------- | -------------------------- |
+| Main LLM     | `gpt-5-mini`         | Task orchestration         |
+| Codemode LLM | `gpt-5.1-codex-mini` | JavaScript code generation |
 
-1. Start the dev server: `npm start`
-2. Find the Vite bundle (generated at runtime):
-   ```
-   examples/codemode/node_modules/.vite/deps_codemode_demo/
-   ```
-3. Search for codemode-related chunks and find `openai("gpt-`
-4. Update the model name
+Models are configured in:
 
-**Note:** The bundle is regenerated when Vite re-optimizes dependencies.
+- Main LLM: `src/server.ts`
+- Codemode LLM: `packages/codemode/src/ai.ts`
 
 ## Known Issues & Fixes
 
