@@ -150,7 +150,10 @@ export class Simplechat extends Agent<Env, State> {
     console.log("\n╔═════════════════════════════════════════════════════════");
     console.log("║ [LLM] GPT-5-mini");
     console.log("╠═════════════════════════════════════════════════════════");
-    console.log("║ User Input:", userMessage?.content);
+    console.log(
+      "║ User Input:",
+      userMessage?.parts?.map((p: any) => p.text).join(" ")
+    );
     console.log(
       "║ Available Tools:",
       Object.keys(tracedTools).join(", ") || "(none)"
