@@ -687,7 +687,7 @@ The Main LLM prompt was optimized to batch related operations:
 | System         | Requests            | Total Tokens | Duration | Notes                         |
 | -------------- | ------------------- | ------------ | -------- | ----------------------------- |
 | **Codemode**   | 1 Main + 2 Codemode | ~43,318      | ~3 min   | Batched ops, ~18K per call    |
-| **Simple-LLM** | 3                   | ~36,057      | ~180s    | Context grows: 8K → 10K → 16K |
+| **Simple-LLM** | 3                   | ~36,057      | ~3 min   | Context grows: 8K → 10K → 16K |
 
 **Codemode:** 2 batched calls handle all operations. Each Codemode call starts fresh (~18K tokens).
 
@@ -732,10 +732,10 @@ Codemode (Independent Context):
 | **All Tasks Done**    | ✅ Yes   | ❌ Partial | Codemode |
 | **User Interactions** | 1        | 3          | Codemode |
 | **Context Growth**    | O(1)     | O(n)       | Codemode |
-| **Total Tokens**      | ~43,318  | ~27,634    | Simple\* |
-| **Duration**          | ~3 min   | 99.4s      | Simple   |
+| **Total Tokens**      | ~43,318  | ~36,057    | Simple   |
+| **Duration**          | ~3 min   | ~3 min     | Tie      |
 
-\*With task batching, Codemode token usage is now comparable to Simple-LLM while completing all tasks.
+\*Simple-LLM uses fewer tokens but fails to complete all tasks. Codemode uses more tokens but completes everything autonomously.
 
 **Conclusion:** Codemode completed all tasks autonomously with constant-time scalability. With task batching optimization, token overhead is reduced by 60% while maintaining full task completion.
 
