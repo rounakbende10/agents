@@ -83,7 +83,7 @@ User Message
          ▼
 ┌─────────────────┐
 │  Codemode LLM   │  Token Usage #2 - generates JavaScript
-│(GPT-5.1-codex-mini)│
+│(GPT-5.2-codex)│
 └────────┬────────┘
          │
          ▼
@@ -235,42 +235,7 @@ declare const codemode: {
 };
 ```
 
-**Step 3: Prompt sent to Code LLM**
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ You are a code generating machine.                              │
-│                                                                 │
-│ In addition to regular javascript, you can use these functions: │
-│                                                                 │
-│ interface ListCalendarsInput {}                                 │
-│ interface ListCalendarsOutput {                                 │
-│   calendars: Array<{id: string; summary: string}>               │
-│ }                                                               │
-│ interface ListEventsInput {                                     │
-│   calendarId: string;                                           │
-│   timeMin?: string;                                             │
-│   timeMax?: string;                                             │
-│ }                                                               │
-│ interface ListEventsOutput {                                    │
-│   events: Array<{id: string; summary: string; start: string}>   │
-│ }                                                               │
-│                                                                 │
-│ declare const codemode: {                                       │
-│   "tool_Rgo1O6n7_list-calendars": (input: ListCalendarsInput)   │
-│     => Promise<ListCalendarsOutput>;                            │
-│   "tool_Rgo1O6n7_list-events": (input: ListEventsInput)         │
-│     => Promise<ListEventsOutput>;                               │
-│ }                                                               │
-│                                                                 │
-│ IMPORTANT: Use bracket notation for hyphenated names:           │
-│ codemode["tool_abc_list-calendars"]({})                         │
-│                                                                 │
-│ Generate an async function for: "Get all my events this week"   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Step 4: LLM generates code**
+**Step 3: LLM generates code**
 
 ```javascript
 async function() {
@@ -292,9 +257,9 @@ async function() {
 }
 ```
 
-**Step 5: Proxy routes calls to MCP tools**
+**Step 4: Proxy routes calls to MCP tools**
 
-The `functionName` (e.g., `"tool_Rgo1O6n7_list-calendars"`) matches exactly with the MCP tool registry.
+The `functionName` matches exactly with the MCP tool registry, enabling seamless tool invocation.
 
 ---
 
@@ -560,10 +525,10 @@ The LLM was trying to access `.items` directly instead of parsing from `content[
 
 ### Models
 
-| Component  | Model                | Location                                   |
-| ---------- | -------------------- | ------------------------------------------ |
-| Codemode   | `gpt-5.1-codex-mini` | Vite bundle in `.vite/deps_codemode_demo/` |
-| simple-llm | `gpt-5-mini`         | `examples/simple-llm/src/server.ts`        |
+| Component  | Model           | Location                                   |
+| ---------- | --------------- | ------------------------------------------ |
+| Codemode   | `gpt-5.2-codex` | Vite bundle in `.vite/deps_codemode_demo/` |
+| simple-llm | `gpt-5-mini`    | `examples/simple-llm/src/server.ts`        |
 
 ### MCP Tool Naming
 
@@ -602,111 +567,6 @@ Examples: `tool_LsJQQ4r_google_search`, `tool_Rgo1O6n7_list-calendars`
 ---
 
 ## Test Results
-
-### Multi-Step Query: Web Search + Calendar Event Creation
-
-**Query:** "Get top AI conferences this month and create an event on my calendar making sure there are no overlaps"
-
-**Execution Flow:**
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 1: MAIN LLM (GPT-5-mini)                                           │
-│ Receives user query, decides to use codemode tool                       │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 2: CODEMODE LLM #1 (GPT-5.1-codex-mini)                            │
-│ Task: "Search for top AI conferences in February 2026"                  │
-│                                                                         │
-│ Generated Code:                                                         │
-│   await codemode["tool_LEG5b2Wo_google_search"]({                       │
-│     q: "top AI conferences February 2026"                               │
-│   })                                                                    │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 3: V8 ISOLATE EXECUTION #1                                         │
-│                                                                         │
-│ Tool Call: google_search                                                │
-│ Result: Found conferences:                                              │
-│   - World AI Cannes (Feb 12-13, Cannes)                                 │
-│   - MIT Sloan AI Conference (Feb 13-14, Cambridge)                      │
-│   - AI DevWorld (Feb 18-20, San Jose)                                   │
-│   - DeveloperWeek 2026 (Feb 18-20, San Jose)                            │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 4: CODEMODE LLM #2 (GPT-5.1-codex-mini)                            │
-│ Task: "Get my schedule for February 2026"                               │
-│ Tokens: in=7561 out=1297                                                │
-│                                                                         │
-│ Generated Code:                                                         │
-│   - get-current-time → get current timestamp                            │
-│   - list-calendars → get all calendars                                  │
-│   - list-events (loop) → get events for each calendar                   │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 5: V8 ISOLATE EXECUTION #2                                         │
-│                                                                         │
-│ Tool Calls:                                                             │
-│   1. get-current-time → "2026-02-03T17:36:01, America/New_York"         │
-│   2. list-calendars → 3 calendars (Holidays, OOO, primary)              │
-│                                                                         │
-│ Result: { scheduleWindow, eventsByCalendar: {} } (no conflicts)         │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 6: CODEMODE LLM #3 (GPT-5.1-codex-mini)                            │
-│ Task: "Create event for AI DevWorld Feb 18-20, no conflicts"            │
-│ Tokens: in=7582 out=1144                                                │
-│                                                                         │
-│ Generated Code:                                                         │
-│   - get-freebusy → verify no conflicts                                  │
-│   - create-event → create "AI DevWorld Conference"                      │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 7: V8 ISOLATE EXECUTION #3                                         │
-│                                                                         │
-│ Tool Calls:                                                             │
-│   1. get-freebusy → { busy: [], no conflicts }                          │
-│   2. create-event → Created "AI DevWorld Conference" Feb 18-21          │
-│                                                                         │
-│ Result: Event created with id "us5mttl2t70nfqjlmpa9n5tca8"              │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│ STEP 8: MAIN LLM RESPONSE COMPLETE                                      │
-│                                                                         │
-│ Main LLM Tokens: in=4205 out=87 total=4292                              │
-│ Codemode Tokens: in=7582 out=1144 total=8726                            │
-│ Duration: 40540ms                                                       │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-**Metrics Summary:**
-
-| Metric             | Value                                                                           |
-| ------------------ | ------------------------------------------------------------------------------- |
-| Codemode LLM Calls | 3                                                                               |
-| MCP Tool Calls     | 5 (google_search, get-current-time, list-calendars, get-freebusy, create-event) |
-| Main LLM Tokens    | 4,292                                                                           |
-| Codemode Tokens    | ~8,700                                                                          |
-| Total Tokens       | ~13,000                                                                         |
-| Duration           | 40.5 seconds                                                                    |
-
-**Outcome:** Successfully searched for AI conferences, selected "AI DevWorld", verified no calendar conflicts, and created event for Feb 18-21, 2026.
-
----
 
 ### Multi-Tool Query: Web Search + Calendar + GitHub (3 MCP Servers)
 
