@@ -647,10 +647,13 @@ The Main LLM prompt was optimized to batch related operations:
 
 **Execution Summary:**
 
-| Request | Tokens | Tool Calls | Outcome                                          |
-| ------- | ------ | ---------- | ------------------------------------------------ |
-| #1      | 17,496 | 8          | Search ✅, GitHub ✅, Issue ❌, Calendar skipped |
-| #2      | ~7,000 | 2          | Calendar ✅ (after user clarification), Issue ❌ |
+| Request | Input Tokens | Total Tokens | Cumulative | Outcome                                          |
+| ------- | ------------ | ------------ | ---------- | ------------------------------------------------ |
+| #1      | 8,263        | 9,499        | 9,499      | Search ✅, GitHub ✅, Issue ❌, Calendar skipped |
+| #2      | 10,127       | 10,343       | 19,842     | Calendar ✅ (after user clarification), Issue ❌ |
+| #3      | 16,069       | 16,215       | 36,057     | Issue ❌ (still failing)                         |
+
+**Context Growth:** Input tokens grow each request (8K → 10K → 16K) as conversation history accumulates.
 
 **Key Differences from Codemode:**
 
@@ -681,12 +684,14 @@ The Main LLM prompt was optimized to batch related operations:
 
 ### Token Comparison
 
-| System         | Requests            | Total Tokens | Duration | Notes                      |
-| -------------- | ------------------- | ------------ | -------- | -------------------------- |
-| **Codemode**   | 1 Main + 2 Codemode | ~43,318      | ~3 min   | Batched ops, ~18K per call |
-| **Simple-LLM** | 3                   | ~27,634      | 99.4s    | Context grows: 6K → 13K    |
+| System         | Requests            | Total Tokens | Duration | Notes                         |
+| -------------- | ------------------- | ------------ | -------- | ----------------------------- |
+| **Codemode**   | 1 Main + 2 Codemode | ~43,318      | ~3 min   | Batched ops, ~18K per call    |
+| **Simple-LLM** | 3                   | ~36,057      | ~180s    | Context grows: 8K → 10K → 16K |
 
-**Codemode breakdown:** With task batching, only 2 Codemode LLM calls needed (vs 7 before). Each call handles multiple related tool operations within generated JavaScript.
+**Codemode:** 2 batched calls handle all operations. Each Codemode call starts fresh (~18K tokens).
+
+**Simple-LLM:** Context accumulates. Input tokens grow each request (8K → 10K → 16K) as conversation history is carried forward.
 
 ### Context Isolation: The Key Architectural Difference
 
