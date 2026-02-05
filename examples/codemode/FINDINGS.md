@@ -637,8 +637,6 @@ The Main LLM prompt was optimized to batch related operations:
 - ✅ Created issue "testing code mode"
 - ✅ Added comment "rounak is looking into it"
 
-**Key Insight:** Fine-grained task decomposition results in more codemode calls but ensures no tasks are missed. Each call starts at ~12K input tokens (context isolation), preventing token accumulation.
-
 ---
 
 ### Simple-LLM: Same Multi-Tool Query (Comparison)
