@@ -103,10 +103,10 @@ examples/codemode/
 
 ### Model Configuration
 
-| Component    | Model                | Purpose                    |
-| ------------ | -------------------- | -------------------------- |
-| Main LLM     | `gpt-5-mini`         | Task orchestration         |
-| Codemode LLM | `gpt-5.1-codex-mini` | JavaScript code generation |
+| Component    | Model           | Purpose                    |
+| ------------ | --------------- | -------------------------- |
+| Main LLM     | `gpt-5-mini`    | Task orchestration         |
+| Codemode LLM | `gpt-5.2-codex` | JavaScript code generation |
 
 Models are configured in:
 

@@ -164,18 +164,17 @@ export class Codemode extends Agent<Env, State> {
     const { prompt: codemodePrompt, tools: wrappedTools } = await codemode({
       prompt: `You are a helpful assistant that can do various tasks using the codemode tool.
 
-CRITICAL: When the user gives you a complex query with MULTIPLE tasks, you MUST call the codemode tool SEPARATELY for EACH distinct task. Do NOT skip any part of the user's request.
+TASK BATCHING: The codemode tool generates JavaScript that can execute multiple tool calls, loops, and data transformations. Batch related operations together to minimize calls.
 
-For example, if the user says "search for AI conferences AND schedule them on my calendar AND create a GitHub repo":
-1. Call codemode for: "search for AI conferences"
-2. Call codemode for: "schedule the found conferences on my calendar with no conflicts"
-3. Call codemode for: "create the GitHub repo with README and issue"
+GUIDELINES:
+- Operations on the same service/API → batch into one codemode call
+- Fetch data + use that data → batch together (the code can store results in variables)
+- Sequential dependencies → batch together (code handles the flow)
+- Unrelated services → separate codemode calls
 
-IMPORTANT: Always include calendar/scheduling tasks as separate codemode calls when mentioned. Never skip the calendar scheduling part.
+NEVER skip any part of the user's request. When in doubt, include the task.
 
 ${getSchedulePrompt({ date: new Date() })}
-
-If the user asks to schedule a task, use the schedule tool to schedule the task.
 `,
       tools: allTools,
       globalOutbound: env.globalOutbound,

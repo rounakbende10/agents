@@ -2,7 +2,7 @@
 
 **Location**: `/examples/codemode/`
 **Status**: Working (with fixes applied)
-**Last Updated**: February 4, 2026
+**Last Updated**: February 5, 2026
 
 ---
 
@@ -720,79 +720,53 @@ Examples: `tool_LsJQQ4r_google_search`, `tool_Rgo1O6n7_list-calendars`
 
 **Log File:** `logs/codemode-multi-tool-test.log`
 
-**Execution Flow (Sequential):**
+**Execution Flow (with Task Batching):**
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ MAIN LLM (GPT-5-mini) - Orchestrates 7 sequential codemode calls        │
+│ MAIN LLM (GPT-5-mini) - Batches related operations into 2 codemode calls│
 └─────────────────────────────────────────────────────────────────────────┘
         │
         ▼
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│ #1 Search AI     │────▶│ #2 Get current   │────▶│ #3 Schedule      │
-│ conferences      │     │ date/time        │     │ calendar events  │
-│ (13,384 tokens)  │     │ (12,296 tokens)  │     │ (25,000 tokens)  │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
-                                                          │
-        ┌─────────────────────────────────────────────────┘
-        ▼
-┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│ #4 Check repo    │────▶│ #5 Create repo + │────▶│ #6 Create issue  │
-│ exists           │     │ README           │     │                  │
-│ (13,817 tokens)  │     │ (18,322 tokens)  │     │ (13,366 tokens)  │
-└──────────────────┘     └──────────────────┘     └──────────────────┘
-                                                          │
-                                                          ▼
-                                              ┌──────────────────┐
-                                              │ #7 Add comment   │
-                                              │ (13,207 tokens)  │
-                                              └──────────────────┘
+┌─────────────────────────────────┐     ┌─────────────────────────────────┐
+│ Codemode Call #1                │────▶│ Codemode Call #2                │
+│ Search + Calendar operations    │     │ All GitHub operations           │
+│ (~20K tokens)                   │     │ (~17K tokens)                   │
+│                                 │     │                                 │
+│ • google_search                 │     │ • search_repositories           │
+│ • list-calendars                │     │ • create_repository             │
+│ • get-freebusy                  │     │ • create_or_update_file         │
+│ • create-event                  │     │ • create_issue                  │
+│                                 │     │ • add_issue_comment             │
+└─────────────────────────────────┘     └─────────────────────────────────┘
 ```
 
-Note: Codemode calls are sequential (Main LLM waits for each result). However, _within_ each codemode call, the generated JavaScript can execute multiple tool calls in parallel using `Promise.all()`.
+**Task Batching Optimization:**
 
-**Key Observations:**
+The Main LLM prompt was optimized to batch related operations:
 
-1. **Proper Task Decomposition**: The Main LLM correctly decomposed the complex query into 7 granular sub-tasks, ensuring no part of the request was missed.
+- Same service/API operations → single codemode call
+- Fetch + use data → batched together
+- Sequential dependencies → handled within generated code
 
-2. **Calendar Scheduling Included**: Calendar events were successfully created for the found AI conferences.
+| Metric             | Before (Over-decomposed) | After (Batched) | Improvement |
+| ------------------ | ------------------------ | --------------- | ----------- |
+| Codemode LLM Calls | 7                        | 2               | 71% fewer   |
+| Total Tokens       | ~109,392                 | ~43,318         | 60% fewer   |
+| Retry Attempts     | 3                        | 1               | 67% fewer   |
+| Duration           | ~3 min                   | ~3 min          | Similar     |
 
-3. **Dependency-Aware Tool Ordering**: The LLM calls `search_repositories` first to discover the `owner` before using it in subsequent GitHub API calls.
+**Metrics Summary (Optimized):**
 
-4. **Owner Discovery Pattern**:
-   ```
-   search_repositories("codemodetest")
-        ↓
-   Parse: JSON.parse(response.content[0].text)
-        ↓
-   Extract: items[0].owner.login → "rounakbende10"
-        ↓
-   Use in: create_issue, add_issue_comment, etc.
-   ```
-
-**Metrics Summary:**
-
-| Metric             | Value                                                                                                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP Servers        | 3 (Serper, Calendar, GitHub)                                                                                                                                                            |
-| Codemode LLM Calls | 7                                                                                                                                                                                       |
-| Total Tool Calls   | 15+ (google_search, get-current-time, list-calendars, get-freebusy, create-event ×3, search_repositories ×3, create_repository, create_or_update_file, create_issue, add_issue_comment) |
-| Codemode Tokens    | ~109,392 (sum of all 7 calls)                                                                                                                                                           |
-| Avg Tokens/Call    | ~15,627                                                                                                                                                                                 |
-| Duration           | ~3 minutes                                                                                                                                                                              |
-
-**Token Breakdown by Codemode Call:**
-
-| Call #    | Task                     | Input      | Output     | Total       |
-| --------- | ------------------------ | ---------- | ---------- | ----------- |
-| 1         | Search AI conferences    | 12,043     | 1,341      | 13,384      |
-| 2         | Get current date/time    | 12,005     | 291        | 12,296      |
-| 3         | Schedule calendar events | 12,182     | 12,818     | 25,000      |
-| 4         | Check repo exists        | 12,018     | 1,799      | 13,817      |
-| 5         | Create repo + README     | 12,042     | 6,280      | 18,322      |
-| 6         | Create issue             | 12,038     | 1,328      | 13,366      |
-| 7         | Add comment              | 12,033     | 1,174      | 13,207      |
-| **Total** |                          | **84,361** | **25,031** | **109,392** |
+| Metric             | Value                        |
+| ------------------ | ---------------------------- |
+| MCP Servers        | 3 (Serper, Calendar, GitHub) |
+| Codemode LLM Calls | 2                            |
+| Main LLM Tokens    | ~6,669                       |
+| Codemode Tokens    | ~36,649                      |
+| Total Tokens       | ~43,318                      |
+| Avg Tokens/Call    | ~18,325                      |
+| Duration           | ~3 minutes                   |
 
 **Outcome:** All tasks completed successfully:
 
@@ -840,21 +814,21 @@ Note: Codemode calls are sequential (Main LLM waits for each result). However, _
 
 ### Behavioral Differences
 
-| Behavior               | Codemode                                     | Simple-LLM                                 |
-| ---------------------- | -------------------------------------------- | ------------------------------------------ |
-| **Execution style**    | Autonomous - completes all tasks in one flow | Interactive - asks clarifying questions    |
-| **Tool execution**     | Parallel via `Promise.all()`                 | Sequential with LLM reasoning between each |
-| **Error handling**     | Retry mechanism with error feedback          | Explains error, offers workarounds         |
-| **Task decomposition** | Main LLM splits into granular subtasks       | Single context handles everything          |
+| Behavior            | Codemode                                     | Simple-LLM                                 |
+| ------------------- | -------------------------------------------- | ------------------------------------------ |
+| **Execution style** | Autonomous - completes all tasks in one flow | Interactive - asks clarifying questions    |
+| **Tool execution**  | Parallel via `Promise.all()`                 | Sequential with LLM reasoning between each |
+| **Error handling**  | Retry mechanism with error feedback          | Explains error, offers workarounds         |
+| **Task batching**   | Groups related ops into fewer LLM calls      | Single context handles everything          |
 
 ### Token Comparison
 
-| System         | Requests            | Total Tokens | Duration | Notes                             |
-| -------------- | ------------------- | ------------ | -------- | --------------------------------- |
-| **Codemode**   | 1 Main + 7 Codemode | ~111,892     | ~3 min   | ~12K per Codemode call (constant) |
-| **Simple-LLM** | 3                   | ~27,634      | 99.4s    | Context grows: 6K → 13K           |
+| System         | Requests            | Total Tokens | Duration | Notes                      |
+| -------------- | ------------------- | ------------ | -------- | -------------------------- |
+| **Codemode**   | 1 Main + 2 Codemode | ~43,318      | ~3 min   | Batched ops, ~18K per call |
+| **Simple-LLM** | 3                   | ~27,634      | 99.4s    | Context grows: 6K → 13K    |
 
-**Codemode breakdown:** Each of the 7 Codemode LLM calls used ~12K input tokens (tool definitions + task), regardless of conversation history. This is the key architectural difference.
+**Codemode breakdown:** With task batching, only 2 Codemode LLM calls needed (vs 7 before). Each call handles multiple related tool operations within generated JavaScript.
 
 ### Context Isolation: The Key Architectural Difference
 
@@ -895,12 +869,12 @@ Codemode (Independent Context):
 | **All Tasks Done**    | ✅ Yes   | ❌ Partial | Codemode |
 | **User Interactions** | 1        | 3          | Codemode |
 | **Context Growth**    | O(1)     | O(n)       | Codemode |
-| **Total Tokens**      | ~111,892 | ~27,634    | N/A\*    |
-| **Duration**          | ~3 min   | 99.4s      | N/A\*    |
+| **Total Tokens**      | ~43,318  | ~27,634    | Simple\* |
+| **Duration**          | ~3 min   | 99.4s      | Simple   |
 
-\*Token and duration comparisons are not meaningful when one system failed to complete the task.
+\*With task batching, Codemode token usage is now comparable to Simple-LLM while completing all tasks.
 
-**Conclusion:** Codemode completed all tasks autonomously with constant-time scalability. Simple-LLM used fewer tokens but failed to complete the full task and required user interaction.
+**Conclusion:** Codemode completed all tasks autonomously with constant-time scalability. With task batching optimization, token overhead is reduced by 60% while maintaining full task completion.
 
 ### Tool Parameter Handling
 

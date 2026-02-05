@@ -157,7 +157,7 @@ Analyze the error and generate corrected code. Pay close attention to:
           }
 
           const response = await generateObject({
-            model: openai("gpt-5.1-codex-mini"),
+            model: openai("gpt-5.2-codex"),
             schema: z.object({
               code: z.string()
             }),
