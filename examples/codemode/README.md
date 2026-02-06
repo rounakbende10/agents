@@ -31,6 +31,8 @@ Open http://localhost:5173 (or 5174/5175 if ports are in use).
 
 ## MCP Server Setup
 
+MCP servers run in **stdio mode** by default. Use `supergateway` to expose them as SSE endpoints.
+
 ### Google Calendar
 
 **Setup:**
@@ -38,15 +40,15 @@ Open http://localhost:5173 (or 5174/5175 if ports are in use).
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) → Enable **Google Calendar API**
 2. Create OAuth credentials: "APIs & Services" → "Credentials" → "OAuth client ID" → "Desktop app"
 3. Download as `credentials.json`
-4. Run auth: `npx @anthropic/mcp-server-google-calendar auth` (saves `token.json`)
+4. Run auth: `npx google-calendar-mcp auth` (saves `token.json`)
 
 **Start server:**
 
 ```bash
-npx @anthropic/mcp-server-google-calendar --transport sse --port 3001
+npx -y supergateway --stdio "npx google-calendar-mcp" --port 3001 --cors
 ```
 
-**Connect:** Name `google-calendar`, URL `http://localhost:3001/sse`
+**Connect:** Name `calendar`, URL `http://localhost:3001/sse`
 
 > Tokens expire after 7 days in "Testing" mode. Re-run auth command to refresh.
 
@@ -55,20 +57,46 @@ npx @anthropic/mcp-server-google-calendar --transport sse --port 3001
 Get API key from [serper.dev](https://serper.dev)
 
 ```bash
-SERPER_API_KEY=your-key npx @anthropic/mcp-server-serper --transport sse --port 3002
+SERPER_API_KEY=your-key npx -y supergateway --stdio "npx -y mcp-server-serper" --port 3002 --cors
 ```
 
 **Connect:** Name `serper`, URL `http://localhost:3002/sse`
+
+> **Note:** The `mcp-server-serper` package reads `SERPER_API_KEY` from environment only in stdio mode. Running directly with `--port` expects API key in request headers instead.
 
 ### GitHub
 
 Create token at [GitHub Settings → Personal Access Tokens](https://github.com/settings/tokens) with `repo` scope.
 
 ```bash
-GITHUB_PERSONAL_ACCESS_TOKEN=your-token npx @modelcontextprotocol/server-github --transport sse --port 3003
+GITHUB_PERSONAL_ACCESS_TOKEN=your-token npx -y supergateway --stdio "npx -y @modelcontextprotocol/server-github" --port 3003 --cors
 ```
 
 **Connect:** Name `github`, URL `http://localhost:3003/sse`
+
+### Start All MCP Servers
+
+Create a script to start all servers:
+
+```bash
+#!/bin/bash
+# start-mcp-servers.sh
+
+# Load environment variables
+source .env
+
+# Google Calendar (port 3001)
+npx -y supergateway --stdio "npx google-calendar-mcp" --port 3001 --cors &
+
+# Serper Web Search (port 3002)
+SERPER_API_KEY=$SERPER_API_KEY npx -y supergateway --stdio "npx -y mcp-server-serper" --port 3002 --cors &
+
+# GitHub (port 3003)
+GITHUB_PERSONAL_ACCESS_TOKEN=$GITHUB_PERSONAL_ACCESS_TOKEN npx -y supergateway --stdio "npx -y @modelcontextprotocol/server-github" --port 3003 --cors &
+
+echo "MCP servers started on ports 3001, 3002, 3003"
+wait
+```
 
 ### Security
 

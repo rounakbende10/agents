@@ -372,7 +372,7 @@ define: { __filename: "'index.ts'", __dirname: "'/'" }
 2. Add bracket notation instruction to prompt
 3. Pass `functionName: prop` directly (remove `toKebabCase`)
 
-**PR:** [cloudflare/agents#807](https://github.com/cloudflare/agents/pull/807)
+**PR:** [cloudflare/agents#806](https://github.com/cloudflare/agents/pull/806)
 
 ### Issue 3: Vite Dependency Caching
 
@@ -519,6 +519,56 @@ The LLM was trying to access `.items` directly instead of parsing from `content[
 3. Extracts `owner.login` from results
 4. Uses that owner in subsequent tool calls
 
+### Issue 8: Parameter Pollution in Traditional Tool Calling
+
+**Error:** GitHub API rejects tool calls with `422 Unprocessable Entity`
+
+**Root Cause:** Traditional AI SDK tool calling includes schema default values in the request, even when not needed:
+
+```json
+{
+  "owner": "user",
+  "repo": "myrepo",
+  "title": "New Issue",
+  "milestone": 0, // ← Invalid: GitHub rejects milestone: 0
+  "assignees": [], // ← Unnecessary empty array
+  "labels": [] // ← Unnecessary empty array
+}
+```
+
+GitHub's API rejects `milestone: 0` as invalid (must be a valid milestone ID or omitted).
+
+**Why Codemode Avoids This:**
+
+Code generation gives the LLM precise parameter control:
+
+| Approach       | Parameter Behavior                     | Example                     |
+| -------------- | -------------------------------------- | --------------------------- |
+| **Codemode**   | Only explicit params in generated code | `{ owner, repo, title }` ✅ |
+| **Simple-LLM** | Schema defaults may be included        | `{ ..., milestone: 0 }` ❌  |
+
+**Fix:** Implemented input sanitization in `examples/simple-llm/src/server.ts` to remove invalid default values before passing to MCP tools:
+
+```typescript
+function sanitizeToolInput(
+  input: Record<string, unknown>
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    // Skip invalid defaults
+    if (value === 0 && key === "milestone") continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    if (value === null || value === undefined) continue;
+    sanitized[key] = value;
+  }
+  return sanitized;
+}
+```
+
+This removes `milestone: 0`, empty arrays, and null/undefined values before API calls.
+
+**Issue:** [cloudflare/agents#851](https://github.com/cloudflare/agents/issues/851)
+
 ---
 
 ## Configuration
@@ -570,63 +620,58 @@ Examples: `tool_LsJQQ4r_google_search`, `tool_Rgo1O6n7_list-calendars`
 
 ### Multi-Tool Query: Web Search + Calendar + GitHub (3 MCP Servers)
 
-**Query:** "search for top AI conferences this month and schedule my calendar event with no overlaps. check for "codemodetest" repo if not present Create a git repo named "codemodetest" and add a Readme file stating "this is codemode test" and create an issue stating "testing code mode" and add a comment on the same issue stating "rounak is looking into it"
+**Query:** "search for top AI conferences this month select one and schedule my calendar event with no overlaps. check for "codemodetest" repo if not present Create a git repo named "codemodetest" and add a Readme file stating "this is codemode test" and create an issue stating "testing code mode" and add a comment on the same issue stating "rounak is looking into it"
 
 **MCP Servers Used:**
 
-- Serper (Google Search)
+- Serper (Google Search + Scrape)
 - Google Calendar
 - GitHub
 
-**Log File:** `logs/codemode-multi-tool-test.log`
-
-**Execution Flow (with Task Batching):**
+**Execution Flow (Single Codemode Call):**
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ MAIN LLM (GPT-5-mini) - Batches related operations into 2 codemode calls│
+│ MAIN LLM (GPT-5-mini) - Orchestrates single comprehensive codemode call │
 └─────────────────────────────────────────────────────────────────────────┘
         │
         ▼
-┌─────────────────────────────────┐     ┌─────────────────────────────────┐
-│ Codemode Call #1                │────▶│ Codemode Call #2                │
-│ Search + Calendar operations    │     │ All GitHub operations           │
-│ (~20K tokens)                   │     │ (~17K tokens)                   │
-│                                 │     │                                 │
-│ • google_search                 │     │ • search_repositories           │
-│ • list-calendars                │     │ • create_repository             │
-│ • get-freebusy                  │     │ • create_or_update_file         │
-│ • create-event                  │     │ • create_issue                  │
-│                                 │     │ • add_issue_comment             │
-└─────────────────────────────────┘     └─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Codemode Call #1 - All operations in single code generation             │
+│                                                                          │
+│ Web Search + Scrape:          Calendar Operations:                       │
+│ • google_search               • get-current-time                         │
+│ • scrape (multiple pages)     • list-calendars                           │
+│                               • get-freebusy                             │
+│ GitHub Operations:            • create-event                             │
+│ • search_repositories                                                    │
+│ • create_repository                                                      │
+│ • create_or_update_file                                                  │
+│ • create_issue                                                           │
+│ • add_issue_comment                                                      │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Task Batching Optimization:**
+**Metrics (Latest Run - Feb 5, 2026):**
 
-The Main LLM prompt was optimized to batch related operations:
+| Metric                 | Value                          |
+| ---------------------- | ------------------------------ |
+| MCP Servers            | 3 (Serper, Calendar, GitHub)   |
+| **Codemode LLM Calls** | **1**                          |
+| Main LLM Tokens        | 8,116 in / 1,540 out = 9,656   |
+| Codemode Tokens        | 12,442 in / 8,444 out = 20,886 |
+| **Total Tokens**       | **30,542**                     |
+| **Duration**           | **175 seconds (~2.9 min)**     |
+| Retry Attempts         | 0                              |
 
-- Same service/API operations → single codemode call
-- Fetch + use data → batched together
-- Sequential dependencies → handled within generated code
+**Optimization Progress:**
 
-| Metric             | Before (Over-decomposed) | After (Batched) | Improvement |
-| ------------------ | ------------------------ | --------------- | ----------- |
-| Codemode LLM Calls | 7                        | 2               | 71% fewer   |
-| Total Tokens       | ~109,392                 | ~43,318         | 60% fewer   |
-| Retry Attempts     | 3                        | 1               | 67% fewer   |
-| Duration           | ~3 min                   | ~3 min          | Similar     |
-
-**Metrics Summary (Optimized):**
-
-| Metric             | Value                        |
-| ------------------ | ---------------------------- |
-| MCP Servers        | 3 (Serper, Calendar, GitHub) |
-| Codemode LLM Calls | 2                            |
-| Main LLM Tokens    | ~6,669                       |
-| Codemode Tokens    | ~36,649                      |
-| Total Tokens       | ~43,318                      |
-| Avg Tokens/Call    | ~18,325                      |
-| Duration           | ~3 minutes                   |
+| Metric             | Initial (Over-decomposed) | Batched (2 calls) | Optimized (1 call) |
+| ------------------ | ------------------------- | ----------------- | ------------------ |
+| Codemode LLM Calls | 7                         | 2                 | **1**              |
+| Total Tokens       | ~109,392                  | ~43,318           | **~30,542**        |
+| Retry Attempts     | 3                         | 1                 | **0**              |
+| Duration           | ~3 min                    | ~3 min            | **~2.9 min**       |
 
 **Outcome:** All tasks completed successfully:
 
@@ -643,31 +688,28 @@ The Main LLM prompt was optimized to batch related operations:
 
 **Query:** Same as Codemode test above
 
-**Log File:** `logs/simple-llm-multi-tool-test.log`
+**Log File:** `/tmp/simple-llm.log`
 
 **Execution Summary:**
 
-| Request | Input Tokens | Total Tokens | Cumulative | Outcome                                          |
-| ------- | ------------ | ------------ | ---------- | ------------------------------------------------ |
-| #1      | 8,263        | 9,499        | 9,499      | Search ✅, GitHub ✅, Issue ❌, Calendar skipped |
-| #2      | 10,127       | 10,343       | 19,842     | Calendar ✅ (after user clarification), Issue ❌ |
-| #3      | 16,069       | 16,215       | 36,057     | Issue ❌ (still failing)                         |
+| Request | Input Tokens | Total Tokens | Cumulative | Outcome                                |
+| ------- | ------------ | ------------ | ---------- | -------------------------------------- |
+| #1      | 8,263        | 9,499        | 9,499      | Search ✅, GitHub repo ✅              |
+| #2      | 10,127       | 10,343       | 19,842     | Calendar ✅ (after user clarification) |
+| #3      | 16,069       | 16,215       | 36,057     | Issue created ✅                       |
+| #4      | 16,857       | 17,933       | 53,990     | Comment added ✅, All tasks complete   |
 
-**Context Growth:** Input tokens grow each request (8K → 10K → 16K) as conversation history accumulates.
+**Context Growth:** Input tokens grow each request (8K → 10K → 16K → 17K) as conversation history accumulates.
 
 **Key Differences from Codemode:**
 
-1. **Asks Before Acting**: Requested clarification for calendar ("Which calendar? What format?") instead of autonomous execution
+1. **Interactive Approach**: Requested clarification for calendar ("Which calendar? What format?") instead of autonomous execution
 
-2. **Parameter Pollution**: AI SDK included invalid defaults that caused failures:
+2. **Sequential Tool Calls**: Each tool call requires LLM reasoning between calls
 
-   ```json
-   { "milestone": 0, "assignees": [], "labels": [] } // ← GitHub rejects milestone: 0
-   ```
+3. **More Requests Required**: 4 requests vs 1 for Codemode to complete same tasks
 
-3. **No Self-Correction**: Explained errors but couldn't auto-retry like Codemode
-
-**Outcome:** Partial completion. Required user interaction for calendar. Issue creation failed due to invalid default parameters.
+**Outcome:** All tasks completed successfully, but required 4 user interactions and 77% more tokens than Codemode.
 
 ---
 
@@ -684,10 +726,10 @@ The Main LLM prompt was optimized to batch related operations:
 
 ### Token Comparison
 
-| System         | Requests            | Total Tokens | Duration | Notes                         |
-| -------------- | ------------------- | ------------ | -------- | ----------------------------- |
-| **Codemode**   | 1 Main + 2 Codemode | ~43,318      | ~3 min   | Batched ops, ~18K per call    |
-| **Simple-LLM** | 3                   | ~36,057      | ~3 min   | Context grows: 8K → 10K → 16K |
+| System         | Requests            | Total Tokens | Duration | Notes                               |
+| -------------- | ------------------- | ------------ | -------- | ----------------------------------- |
+| **Codemode**   | 1 Main + 1 Codemode | ~30,542      | ~2.9 min | Single call, all ops batched        |
+| **Simple-LLM** | 4                   | ~53,990      | ~4 min   | Context grows: 8K → 10K → 16K → 17K |
 
 **Codemode:** 2 batched calls handle all operations. Each Codemode call starts fresh (~18K tokens).
 
@@ -729,15 +771,15 @@ Codemode (Independent Context):
 
 | Metric                | Codemode | Simple-LLM | Winner   |
 | --------------------- | -------- | ---------- | -------- |
-| **All Tasks Done**    | ✅ Yes   | ❌ Partial | Codemode |
-| **User Interactions** | 1        | 3          | Codemode |
+| **All Tasks Done**    | ✅ Yes   | ✅ Yes     | Tie      |
+| **User Interactions** | 1        | 4          | Codemode |
 | **Context Growth**    | O(1)     | O(n)       | Codemode |
-| **Total Tokens**      | ~43,318  | ~36,057    | Simple   |
-| **Duration**          | ~3 min   | ~3 min     | Tie      |
+| **Total Tokens**      | ~30,542  | ~53,990    | Codemode |
+| **Duration**          | ~2.9 min | ~4 min     | Codemode |
 
-\*Simple-LLM uses fewer tokens but fails to complete all tasks. Codemode uses more tokens but completes everything autonomously.
+\*Both systems completed all tasks, but Codemode used 43% fewer tokens and completed 28% faster with a single user interaction vs 4 for Simple-LLM.
 
-**Conclusion:** Codemode completed all tasks autonomously with constant-time scalability. With task batching optimization, token overhead is reduced by 60% while maintaining full task completion.
+**Conclusion:** Codemode completed all tasks autonomously with constant-time scalability. With single-call optimization, Codemode uses fewer tokens (30K vs 54K) and completes faster (2.9 min vs 4 min) than traditional tool calling.
 
 ### Tool Parameter Handling
 
@@ -754,7 +796,7 @@ A key architectural advantage of Codemode is precise parameter control:
 
 ## Contribution
 
-### PR #807: Fix MCP Tool Name Handling
+### PR #806: Fix MCP Tool Name Handling
 
 **Repository:** [cloudflare/agents](https://github.com/cloudflare/agents)
 **Status:** Closed (not merged) - API being reworked by maintainers
@@ -766,6 +808,18 @@ A key architectural advantage of Codemode is precise parameter control:
 - Direct function name pass-through
 
 The fixes are applied locally in this fork for testing purposes.
+
+### Issue #851: Parameter Pollution in Tool Calling
+
+**Repository:** [cloudflare/agents](https://github.com/cloudflare/agents)
+**Status:** Open
+**URL:** [cloudflare/agents#851](https://github.com/cloudflare/agents/issues/851)
+
+**Problem reported:**
+
+- Tool calling includes schema default values (e.g., `milestone: 0`, empty arrays)
+- GitHub API rejects `milestone: 0` with 422 Unprocessable Entity
+- Workaround: Input sanitization before MCP tool calls
 
 ---
 

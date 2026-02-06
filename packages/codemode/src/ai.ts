@@ -110,7 +110,7 @@ export async function experimental_codemode(options: {
             "\n╔═════════════════════════════════════════════════════════"
           );
           console.log(
-            "║ [CODEMODE LLM] GPT-5.1-codex-mini" +
+            "║ [CODEMODE LLM] GPT-5.2-codex" +
               (attempt > 1 ? ` (Retry ${attempt}/${MAX_RETRIES})` : "")
           );
           console.log(
@@ -191,7 +191,8 @@ Analyze the error and generate corrected code. Pay close attention to:
          IMPORTANT: Different APIs use different field names:
          - GitHub search: data.items (array of results)
          - Serper/Google search: data.organic (array of search results with title, link, snippet)
-         - Calendar list: data.items or just data (array of calendars)
+         - Calendar list: data.calendars (array of calendars)
+         - Calendar search-events: data.events (array of event objects with id, summary, start, end)
 
       Generate an anonymous async function expression. Do NOT call it, do NOT wrap it in IIFE, do NOT name it.
 

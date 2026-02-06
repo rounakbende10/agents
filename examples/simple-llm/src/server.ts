@@ -102,12 +102,36 @@ export class Simplechat extends Agent<Env, State> {
     // Collect all tools from MCP servers
     const mcpTools = this.mcp.getAITools();
 
-    // Wrap tools with tracing
+    // Sanitize tool arguments - remove problematic defaults that LLMs tend to add
+    const sanitizeArgs = (args: unknown): unknown => {
+      if (typeof args !== "object" || args === null) return args;
+      const sanitized: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(
+        args as Record<string, unknown>
+      )) {
+        // Skip numeric 0 for optional fields (e.g., milestone: 0)
+        if (value === 0 && ["milestone"].includes(key)) continue;
+        // Skip empty arrays for optional fields
+        if (
+          Array.isArray(value) &&
+          value.length === 0 &&
+          ["assignees", "labels"].includes(key)
+        )
+          continue;
+        sanitized[key] = value;
+      }
+      return sanitized;
+    };
+
+    // Wrap tools with tracing and sanitization
     const tracedTools: ToolSet = {};
     for (const [toolName, tool] of Object.entries(mcpTools)) {
       tracedTools[toolName] = {
         ...tool,
         execute: async (args: unknown, context: unknown) => {
+          // Sanitize args before execution
+          const sanitizedArgs = sanitizeArgs(args);
+
           console.log(
             "\n┌─────────────────────────────────────────────────────────"
           );
@@ -115,12 +139,16 @@ export class Simplechat extends Agent<Env, State> {
           console.log(
             "├─────────────────────────────────────────────────────────"
           );
-          console.log("│ Input:", JSON.stringify(args, null, 2));
+          console.log("│ Input (raw):", JSON.stringify(args, null, 2));
+          console.log(
+            "│ Input (sanitized):",
+            JSON.stringify(sanitizedArgs, null, 2)
+          );
           console.log(
             "└─────────────────────────────────────────────────────────"
           );
 
-          const result = await tool.execute!(args, context);
+          const result = await tool.execute!(sanitizedArgs, context);
 
           console.log(
             "\n┌─────────────────────────────────────────────────────────"

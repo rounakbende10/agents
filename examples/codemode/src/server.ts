@@ -356,6 +356,28 @@ ${getSchedulePrompt({ date: new Date() })}
     }
     console.log("╚═════════════════════════════════════════════════════════");
 
+    // Log final text response
+    const lastMessage = this.state.messages[this.state.messages.length - 1];
+    if (lastMessage?.role === "assistant") {
+      const textParts = lastMessage.parts
+        ?.filter((p: any) => p.type === "text")
+        .map((p: any) => p.text)
+        .join("");
+      if (textParts) {
+        console.log(
+          "\n╔═════════════════════════════════════════════════════════"
+        );
+        console.log("║ [FINAL RESPONSE]");
+        console.log(
+          "╠═════════════════════════════════════════════════════════"
+        );
+        console.log("║", textParts.split("\n").join("\n║ "));
+        console.log(
+          "╚═════════════════════════════════════════════════════════"
+        );
+      }
+    }
+
     this.setState({
       messages: this.state.messages,
       loading: false,
