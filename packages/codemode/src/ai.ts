@@ -194,6 +194,15 @@ Analyze the error and generate corrected code. Pay close attention to:
          - Calendar list: data.calendars (array of calendars)
          - Calendar search-events: data.events (array of event objects with id, summary, start, end)
 
+      6. PARALLEL EXECUTION: When multiple tool calls are independent (no data dependencies between them), use Promise.all for parallel execution to improve performance:
+         const [result1, result2, result3] = await Promise.all([
+           codemode["tool1"](params1),
+           codemode["tool2"](params2),
+           codemode["tool3"](params3)
+         ]);
+
+         Only use sequential execution when one call depends on results from a previous call.
+
       Generate an anonymous async function expression. Do NOT call it, do NOT wrap it in IIFE, do NOT name it.
 
       CORRECT format (use exactly this structure):

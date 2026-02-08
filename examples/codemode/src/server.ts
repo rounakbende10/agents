@@ -234,7 +234,7 @@ ${getSchedulePrompt({ date: new Date() })}
 
     // Capture metrics after completion
     const durationMs = Date.now() - startTime;
-    const usage = await result.usage;
+    const usage = await result.totalUsage;
 
     // Extract and ACCUMULATE codemodeUsage from ALL codemode tool calls
     let codemodeUsage: TokenUsage = {

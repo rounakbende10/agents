@@ -217,7 +217,7 @@ export class Simplechat extends Agent<Env, State> {
 
     // Capture metrics after completion
     const durationMs = Date.now() - startTime;
-    const usage = await result.usage;
+    const usage = await result.totalUsage;
 
     const currentUsage: TokenUsage = usage
       ? {
