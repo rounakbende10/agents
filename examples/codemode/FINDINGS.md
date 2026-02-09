@@ -645,13 +645,13 @@ Examples: `tool_LsJQQ4r_google_search`, `tool_Rgo1O6n7_list-calendars`
 
 **Request 1 — Multi-tool task:**
 
-| Metric           | Value            |
-| ---------------- | ---------------- |
-| Input Tokens     | 127,112          |
-| Output Tokens    | 4,210            |
-| **Total Tokens** | **131,322**      |
-| Duration         | 68s              |
-| Tool Calls       | ~10 (sequential) |
+| Metric           | Value                                  |
+| ---------------- | -------------------------------------- |
+| Input Tokens     | 127,112                                |
+| Output Tokens    | 4,210                                  |
+| **Total Tokens** | **131,322**                            |
+| Duration         | 68s                                    |
+| Tool Calls       | ~10 (mostly sequential, some parallel) |
 
 **Request 2 — Follow-up (delete event + add comment):**
 
@@ -687,7 +687,7 @@ Examples: `tool_LsJQQ4r_google_search`, `tool_Rgo1O6n7_list-calendars`
 
 The core difference is **how many times the LLM re-reads the context**.
 
-**Simple-LLM** makes ~8 sequential tool calls. Each requires a full LLM round-trip that re-sends the entire conversation:
+**Simple-LLM** makes ~8 tool calls (mostly sequential, with occasional parallel batching when the LLM decides calls are independent). Each LLM step re-sends the entire conversation:
 
 ```
 Step 1: [system + user + tools]              → google_search      ~8,300 in
@@ -731,13 +731,32 @@ Request 2 example:
 
 ### Behavioral Differences
 
-| Behavior                | Codemode                                             | Simple-LLM                                  |
-| ----------------------- | ---------------------------------------------------- | ------------------------------------------- |
-| **Execution style**     | Autonomous — completes all tasks in one flow         | May ask clarifying questions first          |
-| **Tool execution**      | Parallel via `Promise.all()`                         | Sequential with LLM reasoning between each  |
-| **Parameter precision** | Only explicit params in generated code               | May include schema defaults (pollution)     |
-| **Task completion**     | Code follows full script — less likely to skip steps | May drop steps when LLM decides it's "done" |
-| **Error handling**      | Retry mechanism with error feedback                  | Explains error, offers workarounds          |
+| Behavior                | Codemode                                     | Simple-LLM                                                                |
+| ----------------------- | -------------------------------------------- | ------------------------------------------------------------------------- |
+| **Execution style**     | Autonomous — completes all tasks in one flow | May ask clarifying questions first                                        |
+| **Tool execution**      | Parallel via `Promise.all()`                 | Mostly sequential; occasional parallel when LLM batches independent calls |
+| **Parameter precision** | Only explicit params in generated code       | May include schema defaults (pollution)                                   |
+| **Task completion**     | Code follows full script — cannot skip steps | Dropped `add_issue_comment` in Request 1 despite explicit ask             |
+| **Error handling**      | Retry mechanism with error feedback          | Explains error, offers workarounds                                        |
+
+### Task Completion Reliability
+
+In Simple-LLM's Request 1 run, the LLM completed `create_issue` and then produced a final text response — **skipping the explicitly requested `add_issue_comment` step**. The LLM decided the task was "done" after creating the issue, even though the user's query clearly included "add a comment on the same issue stating 'rounak is looking into it'."
+
+Codemode cannot exhibit this failure mode. The generated code is a complete program with all steps written out sequentially:
+
+```javascript
+// Codemode's generated code includes ALL steps — can't skip any
+const issue = await codemode["create_issue"]({ owner, repo, title, body });
+const comment = await codemode["add_issue_comment"]({
+  owner,
+  repo,
+  issue_number: issue.number,
+  body: "rounak is looking into it"
+});
+```
+
+Once the code is generated, the V8 isolate executes every line. There is no LLM decision point between steps where it could decide to stop early. This is a structural advantage — reliability comes from the execution model, not from prompt engineering.
 
 ### Performance Summary
 
@@ -748,6 +767,7 @@ Request 2 example:
 | **Intra-request scaling**    | O(1)                             | O(n)                      | Codemode   |
 | **User interactions needed** | 1                                | 1-4                       | Codemode   |
 | **Parameter precision**      | No pollution                     | Needs sanitization        | Codemode   |
+| **Task completion**          | All steps executed               | Dropped a step in testing | Codemode   |
 | **Duration (Request 1)**     | 170s                             | 68s                       | Simple-LLM |
 | **Duration (Request 2)**     | 56s                              | 13s                       | Simple-LLM |
 | **Follow-up efficiency**     | Main LLM bridges partial context | Full context from history | Simple-LLM |
