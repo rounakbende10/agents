@@ -334,47 +334,86 @@ The `functionName` matches exactly with the MCP tool registry, enabling seamless
 
 **Reference:** [cloudflare/workers-sdk#9758](https://github.com/cloudflare/workers-sdk/issues/9758)
 
+**Root Cause:** The `wrangler.jsonc` config defines service bindings (`globalOutbound`, `CodeModeProxy`) that expect named entrypoints. Cloudflare Workers requires these to be exported as `WorkerEntrypoint` classes — plain object exports don't register as named entrypoints.
+
 **Fix:** Export as `WorkerEntrypoint` class, not plain object:
 
 ```typescript
-// Before
+// Before — plain object, not recognized as named entrypoint
 export const globalOutbound = { fetch: async (input, init) => { ... } };
 
-// After
+// After — WorkerEntrypoint class, registers as named entrypoint
 export class globalOutbound extends WorkerEntrypoint {
   async fetch(input, init) { ... }
 }
 ```
 
-Also add in `vite.config.ts`:
+Additionally, the `@cloudflare/codemode` package internally references `__filename` and `__dirname` (Node.js globals that don't exist in Cloudflare Workers). Since the code runs in a V8 isolate (not Node), these must be shimmed in `vite.config.ts`:
 
 ```typescript
 define: { __filename: "'index.ts'", __dirname: "'/'" }
 ```
 
+Without this, the worker crashes with `__filename is not defined` at startup.
+
 ### Issue 2: Hyphenated MCP Tool Names
 
 **Error:** `Tool not found: tool-quq-megaflist-calendars`
 
-**Root Cause:** Lossy camelCase→kebab conversion doesn't preserve underscores/casing.
+**Root Cause:** The codemode SDK's `generateTypes()` function converts tool names to valid JavaScript identifiers using `toValidIdentifier()`, which strips hyphens and underscores, then converts to camelCase. When the generated code calls a tool, the Proxy intercepts the property name and runs it through `toKebabCase()` before looking it up in the tool registry.
 
-**Fix (3 changes):**
+This creates a lossy round-trip: the original MCP tool name `tool_Rgo1O6n7_list-calendars` becomes `toolRgo1O6n7ListCalendars` in the TypeScript declaration, then gets converted to `tool-rgo1o6n7-list-calendars` at the Proxy — which doesn't match the original name in the MCP registry. The underscores and mixed casing are permanently lost.
 
-1. Use quoted property names: `"${toolName}":` instead of `${toValidIdentifier(toolName)}:`
-2. Add bracket notation instruction to prompt
-3. Pass `functionName: prop` directly (remove `toKebabCase`)
+```
+Original:       tool_Rgo1O6n7_list-calendars    (MCP registry)
+→ TypeScript:   toolRgo1O6n7ListCalendars       (toValidIdentifier)
+→ Proxy call:   tool-rgo1o6n7-list-calendars    (toKebabCase)
+→ Lookup:       ❌ not found in MCP registry
+```
+
+**Fix (3 changes in `packages/codemode/src/ai.ts`):**
+
+1. **Quoted property names** in the generated TypeScript declaration — use `"${toolName}":` instead of `${toValidIdentifier(toolName)}:`. This preserves the exact original name including hyphens and underscores:
+   ```typescript
+   // Before: availableTools += `${toValidIdentifier(toolName)}: ...`
+   // After:  availableTools += `"${toolName}": ...`
+   ```
+2. **Bracket notation instruction** added to the code-gen prompt — tells the LLM to use `codemode["tool_Rgo1O6n7_list-calendars"](...)` instead of `codemode.toolRgo1O6n7ListCalendars(...)`, since the quoted names aren't valid dot-notation identifiers.
+3. **Direct function name pass-through** in the Proxy handler — return `prop` as-is instead of running it through `toKebabCase()`, so the name matches the MCP registry exactly.
 
 **PR:** [cloudflare/agents#806](https://github.com/cloudflare/agents/pull/806)
 
 ### Issue 3: Vite Dependency Caching
 
-**Problem:** Patches to source not reflected at runtime.
+**Problem:** After patching `@cloudflare/codemode` source files in `packages/codemode/src/ai.ts`, changes were not reflected at runtime — the old behavior persisted despite confirmed file modifications.
 
-**Solution:** Patch Vite bundle directly:
+**Root Cause:** Vite pre-bundles dependencies during `vite dev` startup for faster development. It takes all packages from `node_modules` (and linked local packages), compiles them into optimized ES modules, and caches them at:
 
 ```
 examples/codemode/node_modules/.vite/deps_codemode_demo/
 ```
+
+Once cached, Vite serves the pre-bundled version and does **not** watch the original source files for changes. This means edits to `packages/codemode/src/ai.ts` have no effect until the cache is invalidated.
+
+**Solution options:**
+
+1. **Delete the cache directory** and restart Vite — it will re-bundle from the updated source:
+
+   ```bash
+   rm -rf examples/codemode/node_modules/.vite/deps_codemode_demo/
+   npm run start   # Vite re-creates the cache from current source
+   ```
+
+2. **Patch the bundled file directly** — edit the compiled output inside the cache directory. The compiled file contains the same logic but as a single bundled ES module. This avoids restarting Vite but the patch is lost on next cache rebuild.
+
+3. **Force Vite to re-optimize** by modifying `vite.config.ts`:
+   ```typescript
+   optimizeDeps: {
+     force: true; // Re-bundles dependencies on every startup
+   }
+   ```
+
+During development, option 1 was used most frequently. Option 2 was used for quick iteration on prompt changes.
 
 ### Issue 4: Code Generation Format
 
@@ -445,7 +484,7 @@ Error: ${lastError}
 
 **Error:** `repoSearchResult.items` returns `undefined`
 
-**Root Cause:** MCP tools return responses wrapped in a specific format:
+**Root Cause:** The [MCP protocol specification](https://modelcontextprotocol.io/) defines a standard response format for tool results. All MCP-compliant servers wrap their responses in a `content` array with typed entries:
 
 ```json
 {
@@ -453,9 +492,22 @@ Error: ${lastError}
 }
 ```
 
-The LLM was trying to access `.items` directly instead of parsing from `content[0].text`.
+The actual data (e.g., a list of GitHub repos) is JSON-serialized inside `content[0].text` as a string. The code-gen LLM doesn't know this wrapping exists — it sees the TypeScript declaration for `search_repositories` and assumes the return value is the raw GitHub API response with `.items` directly accessible:
 
-**Fix:** Added explicit instruction in the Codemode LLM prompt:
+```javascript
+// What the LLM generated (wrong):
+const repos = await codemode["search_repositories"]({ q: "codemodetest" });
+const repo = repos.items[0]; // ❌ undefined — 'items' is inside content[0].text
+
+// What it should be:
+const response = await codemode["search_repositories"]({ q: "codemodetest" });
+const repos = JSON.parse(response.content[0].text);
+const repo = repos.items[0]; // ✅ works
+```
+
+This issue doesn't affect traditional tool calling because the Vercel AI SDK handles MCP response unwrapping automatically before passing results to the LLM. In Codemode, the generated code receives the raw MCP response directly.
+
+**Fix:** Added explicit instruction in the Codemode LLM prompt in `packages/codemode/src/ai.ts`:
 
 ```
 MCP TOOL RESPONSE FORMAT: All MCP tool responses are wrapped as
@@ -466,13 +518,25 @@ const response = await codemode["tool_name"](params);
 const data = JSON.parse(response.content[0].text);
 ```
 
+An alternative fix would be to add an unwrapping layer in the Proxy handler so that generated code receives the parsed data directly, but prompt-based instruction was simpler to implement and test.
+
 ### Issue 7: Dependency-Aware Tool Ordering
 
-**Error:** GitHub tools fail with "owner" parameter missing or incorrect.
+**Error:** GitHub tools fail with `422 Unprocessable Entity` — "owner" parameter missing, incorrect, or hardcoded as a placeholder like `"user"`.
 
-**Root Cause:** LLM generates code that uses GitHub tools but doesn't know the authenticated user's username.
+**Root Cause:** The code-gen LLM generates code that calls GitHub tools like `create_repo` or `create_issue`, which require an `owner` parameter. But the LLM has no way to know the authenticated user's GitHub username — it's not in the TypeScript declarations, not in the prompt, and not available as an environment variable.
 
-**Fix:** Added prompt instructions:
+Without guidance, the LLM either:
+
+- Hardcodes a placeholder: `owner: "user"` or `owner: "username"` → API 404
+- Omits it entirely → API 422
+- Guesses from context → usually wrong
+
+Similarly, Google Calendar tools require a `calendarId` parameter, but the LLM doesn't know which calendars exist for the authenticated user.
+
+The fundamental issue is that **some tool parameters can only be discovered by calling other tools first**. The LLM needs to understand these implicit dependencies.
+
+**Fix:** Added dependency chain instructions to the Codemode LLM prompt in `packages/codemode/src/ai.ts`:
 
 ```
 DEPENDENCY-AWARE TOOL ORDERING: Before calling a tool that requires
@@ -480,8 +544,14 @@ specific input parameters (like "owner", "repo", "calendarId"),
 first call tools that can provide those values:
 
 - For GitHub tools: Use search_repositories and extract "owner.login"
-- For Calendar tools: First call list-calendars and use the primary calendar
+  from the result. Never hardcode usernames.
+- For Calendar tools: First call list-calendars and use the primary
+  calendar's ID. Never assume "primary" as calendarId.
+- For issue/PR tools: First search for the repo to confirm it exists
+  and get the exact owner/repo name.
 ```
+
+This is a prompt-engineering workaround. A more robust solution would be to inject the authenticated user's context (e.g., username, default calendar) into the TypeScript declarations or prompt automatically, but this would require MCP server-level changes to expose identity information.
 
 ### Issue 8: Parameter Pollution in Traditional Tool Calling
 
